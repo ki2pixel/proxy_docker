@@ -1,0 +1,46 @@
+name: CD - Deploy to Vultr
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Deploy to Vultr VPS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH to Vultr
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VULTR_HOST_IP }}
+          username: 'root'
+          key: ${{ secrets.VULTR_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.VULTR_SSH_PORT || 22 }}
+          script: |
+            set -e
+            APP_DIR="/opt/proxy_docker"
+            echo "🚀 [Deploy] Accès au dossier $APP_DIR..."
+            
+            if [ ! -d "$APP_DIR" ]; then
+              echo "[-] Dossier $APP_DIR introuvable sur le serveur Vultr."
+              exit 1
+            fi
+            
+            cd "$APP_DIR"
+            
+            echo "📥 [Deploy] Récupération de la dernière version (Git Pull)..."
+            git pull origin main
+            
+            echo "🐳 [Deploy] Reconstruction et redémarrage des conteneurs Docker..."
+            docker compose down --remove-orphans || true
+            docker compose up -d --build
+            
+            echo "🧹 [Deploy] Nettoyage des images orphelines..."
+            docker image prune -f
+            
+            echo "✅ [Deploy] Déploiement Vultr terminé avec succès !"

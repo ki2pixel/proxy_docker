@@ -1,0 +1,144 @@
+services:
+  # --------------------------------------------------------------------------
+  # Tableau de Bord Web & Contrôleur d'Orchestration ISP (Port 8088 -> 8080)
+  # --------------------------------------------------------------------------
+  dashboard:
+    build:
+      context: ./controller
+      dockerfile: Dockerfile
+    image: isp-dashboard:latest
+    container_name: isp-dashboard
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-8088}:8080"
+    environment:
+      - PORT=8080
+      - APP_DIR=/workspace
+      - DASHBOARD_PORT=${DASHBOARD_PORT:-8088}
+      - SOCKS_PORT=${SOCKS_PORT:-23321}
+      - ISP_PROXY_HOST=${ISP_PROXY_HOST:-194.70.234.170}
+      - ISP_PROXY_PORT=${ISP_PROXY_PORT:-1085}
+      - ISP_PROXY_PROTOCOL=${ISP_PROXY_PROTOCOL:-socks5}
+      - COMPOSE_PROFILES=${COMPOSE_PROFILES:-repocket}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/workspace
+    depends_on:
+      gateway-isp:
+        condition: service_healthy
+
+  # --------------------------------------------------------------------------
+  # Passerelle Dédiée ISP / Residential Gateway (tun2socks + DoH dnsproxy)
+  # --------------------------------------------------------------------------
+  gateway-isp:
+    build:
+      context: ./gateway-isp
+      dockerfile: Dockerfile
+    image: gateway-isp:latest
+    container_name: gateway-isp
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      # Local SOCKS5 forwarder for testing from host machine (via socat)
+      - "${SOCKS_PORT:-23321}:23320"
+    environment:
+      - ISP_PROXY_PROTOCOL=${ISP_PROXY_PROTOCOL:-socks5}
+      - ISP_PROXY_HOST=${ISP_PROXY_HOST:-194.70.234.170}
+      - ISP_PROXY_PORT=${ISP_PROXY_PORT:-1085}
+      - ISP_PROXY_USER=${ISP_PROXY_USER:-}
+      - ISP_PROXY_PASS=${ISP_PROXY_PASS:-}
+      - LOGLEVEL=${GATEWAY_LOGLEVEL:-warning}
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 2s
+
+  # --------------------------------------------------------------------------
+  # 1. Proxyrack PoP Client
+  # --------------------------------------------------------------------------
+  proxyrack:
+    build:
+      context: ./proxyrack
+      dockerfile: Dockerfile
+    image: proxyrack-pop:latest
+    container_name: proxyrack-pop
+    restart: unless-stopped
+    profiles: ["proxyrack", "all"]
+    network_mode: "service:gateway-isp"
+    depends_on:
+      gateway-isp:
+        condition: service_healthy
+    environment:
+      - UUID=${UUID:-}
+      - API_KEY=${API_KEY:-}
+      - DEVICE_NAME=${DEVICE_NAME:-Docker-ISP-Proxyrack}
+    volumes:
+      - proxyrack_data:/app/data
+
+  # --------------------------------------------------------------------------
+  # 2. Honeygain Client
+  # --------------------------------------------------------------------------
+  honeygain:
+    image: honeygain/honeygain:latest
+    container_name: honeygain
+    restart: unless-stopped
+    profiles: ["honeygain", "all"]
+    network_mode: "service:gateway-isp"
+    depends_on:
+      gateway-isp:
+        condition: service_healthy
+    command: ["-tou-accept", "-email", "${HONEYGAIN_EMAIL}", "-pass", "${HONEYGAIN_PASSWORD}", "-device", "${HONEYGAIN_DEVICE_NAME:-Docker-ISP-Honeygain}"]
+
+  # --------------------------------------------------------------------------
+  # 3. PacketStream Client
+  # --------------------------------------------------------------------------
+  packetstream:
+    image: packetstream/psclient:latest
+    container_name: packetstream
+    restart: unless-stopped
+    profiles: ["packetstream", "all"]
+    network_mode: "service:gateway-isp"
+    depends_on:
+      gateway-isp:
+        condition: service_healthy
+    environment:
+      - CID=${PACKETSTREAM_CID:-}
+
+  # --------------------------------------------------------------------------
+  # 4. Pawns.app (IPRoyal) Client
+  # --------------------------------------------------------------------------
+  pawns:
+    image: iproyal/pawns-cli:latest
+    container_name: pawns
+    restart: unless-stopped
+    profiles: ["pawns", "pawns-app", "all"]
+    network_mode: "service:gateway-isp"
+    depends_on:
+      gateway-isp:
+        condition: service_healthy
+    command: ["-email=${PAWNS_EMAIL}", "-password=${PAWNS_PASSWORD}", "-device-name=${PAWNS_DEVICE_NAME:-Docker-ISP-Pawns}", "-accept-tos"]
+
+  # --------------------------------------------------------------------------
+  # 5. Repocket Client
+  # --------------------------------------------------------------------------
+  repocket:
+    image: repocket/repocket:latest
+    container_name: repocket
+    restart: unless-stopped
+    profiles: ["repocket", "all"]
+    network_mode: "service:gateway-isp"
+    depends_on:
+      gateway-isp:
+        condition: service_healthy
+    environment:
+      - RP_EMAIL=${REPOCKET_EMAIL:-}
+      - RP_API_KEY=${REPOCKET_API_KEY:-}
+
+volumes:
+  proxyrack_data:
+    driver: local

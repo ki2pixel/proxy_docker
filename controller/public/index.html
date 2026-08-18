@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ISP Gateway × Monetization Hub | Docker Residential Orchestrator</title>
+  <meta name="description" content="Tableau de bord de gestion et monitoring pour Passerelle Dédiée Static ISP et nœuds de monétisation Docker.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="glow-bg">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+
+  <div class="app-layout">
+    <!-- Navigation / Header -->
+    <header class="glass-nav">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <div class="brand-info">
+          <h1>ISP Gateway <span>×</span> Monetization Hub</h1>
+          <p>Passerelle Dédiée Static ISP / Residential & Orchestrateur Docker</p>
+        </div>
+      </div>
+
+      <div class="header-status-group">
+        <div class="status-badge status-healthy" id="gateway-badge">
+          <span class="status-pulse"></span>
+          <span>Passerelle ISP : Active</span>
+        </div>
+        <div class="status-badge" id="dns-badge">
+          <span class="dot-green"></span>
+          <span>DoH DNS : Cloudflare</span>
+        </div>
+        <div class="status-badge" id="latency-badge">
+          <span id="latency-value">-- ms</span>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="btn-refresh-status" title="Rafraîchir les métriques">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          Rafraîchir
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      
+      <!-- Top Grid: Hero IP & Quick Actions -->
+      <section class="top-grid">
+        <!-- Hero IP Card -->
+        <div class="glass-card hero-ip-card">
+          <div class="card-head">
+            <span class="card-tag">ADRESSE IP PUBLIQUE ISP ACTIVE</span>
+            <span class="badge-shield">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              Zéro Fuite IP Locale
+            </span>
+          </div>
+
+          <div class="ip-main-block">
+            <div class="ip-title-row">
+              <h2 class="ip-display" id="hero-ip">Détection en cours...</h2>
+              <button class="btn-icon" id="btn-copy-ip" title="Copier l'adresse IP">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              </button>
+            </div>
+
+            <div class="ip-tags-row">
+              <div class="meta-tag" id="tag-country">
+                <span class="flag-icon" id="hero-flag">🇫🇷</span>
+                <span id="hero-country">France</span>
+              </div>
+              <div class="meta-tag" id="tag-city">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="10" r="3"/><path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 1 0-16 0c0 3 2.7 7 8 11.7z"/></svg>
+                <span id="hero-city">Paris</span>
+              </div>
+              <div class="meta-tag" id="tag-isp">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+                <span id="hero-isp">Limestone Networks</span>
+              </div>
+              <div class="meta-tag" id="tag-proxy">
+                <span class="dot-blue"></span>
+                <span id="hero-proxy-target">Proxy : socks5://194.70.234.170:1085</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="hero-actions">
+            <button class="btn btn-primary" id="btn-quick-refresh">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              Rafraîchir l'IP & Métriques
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Summary Stats Card -->
+        <div class="glass-card stats-card">
+          <div class="card-head">
+            <span class="card-tag">ÉTAT DU HUB & PASSERELLE</span>
+          </div>
+
+          <div class="stats-grid">
+            <div class="stat-box">
+              <div class="stat-number text-emerald" id="stat-gateway-status">Active</div>
+              <div class="stat-label">Statut Passerelle ISP</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-number text-cyan" id="stat-latency">-- ms</div>
+              <div class="stat-label">Latence Passerelle</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-number" id="stat-active-nodes">0 / 5</div>
+              <div class="stat-label">Nœuds Monétisation Actifs</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-number" id="stat-protocol">SOCKS5</div>
+              <div class="stat-label">Protocole & DoH</div>
+            </div>
+          </div>
+
+          <div class="trial-banner">
+            <span class="sparkle-icon">🛡️</span>
+            <div class="trial-text">
+              <strong>Passerelle Résidentielle Dédiée</strong>
+              <p>Trafic Docker 100% encapsulé via tunnel L3 tun2socks & DoH chiffré.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Monetization Nodes Section -->
+      <section class="section-container">
+        <div class="section-head">
+          <div class="section-title-group">
+            <h3>Nœuds de Monétisation Docker</h3>
+            <p>Applications acheminées à 100% à travers la passerelle ISP</p>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="btn-restart-all-nodes">Redémarrer Tous les Nœuds</button>
+        </div>
+
+        <div class="nodes-grid" id="nodes-grid">
+          <!-- Populated by JS -->
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+        </div>
+      </section>
+
+      <!-- Live Terminal / Logs Section -->
+      <section class="section-container">
+        <div class="section-head">
+          <div class="section-title-group">
+            <h3>Console & Logs en Temps Réel</h3>
+            <p>Flux d'exécution des conteneurs et de la passerelle</p>
+          </div>
+          <div class="log-tabs" id="log-tabs">
+            <button class="tab-btn active" data-target="system">Système / Hub</button>
+            <button class="tab-btn" data-target="gateway-isp">gateway-isp</button>
+            <button class="tab-btn" data-target="repocket">repocket</button>
+            <button class="tab-btn" data-target="honeygain">honeygain</button>
+            <button class="tab-btn" data-target="proxyrack-pop">proxyrack</button>
+          </div>
+        </div>
+
+        <div class="glass-card terminal-card">
+          <div class="terminal-bar">
+            <div class="terminal-dots">
+              <span class="dot red"></span>
+              <span class="dot yellow"></span>
+              <span class="dot green"></span>
+            </div>
+            <span class="terminal-title" id="terminal-target-title">Flux : Système / Hub</span>
+            <button class="btn-clear-logs" id="btn-clear-logs">Effacer</button>
+          </div>
+          <div class="terminal-content" id="terminal-body">
+            <div class="log-line">[SYSTEM] Initialisation de la console en direct...</div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

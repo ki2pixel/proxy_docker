@@ -1,0 +1,13 @@
+{
+  "name": "isp-gateway-dashboard",
+  "version": "1.0.0",
+  "description": "Modern Web Dashboard and Orchestrator for ISP Gateway & Multi-Provider Monetization",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
