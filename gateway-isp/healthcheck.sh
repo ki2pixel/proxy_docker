@@ -1,31 +1,44 @@
 #!/bin/bash
 set -e
 
-# Test external connectivity through tun0
-RESULT=$(curl -s -k --max-time 5 https://ipinfo.io/json 2>/dev/null || true)
+# Healthcheck des PROCESSUS du gateway (pas de la connectivité externe).
+# La santé du tunnel dépend du proxy amont (credentials/session tiers) et est
+# déjà supervisée par :
+#   - le watchdog interne (failover + rotation automatique)
+#   - le dashboard (gatewayStatus via fetchCurrentGatewayIP)
+# Un healthcheck Docker doit refléter la santé du processus local. Le
+# kill-switch L3 garantit structurellement qu'aucun trafic ne fuit sur l'IP
+# de la VM, même si le proxy amont est indisponible.
 
-if [ -z "$RESULT" ] || echo "$RESULT" | grep -q "Rate limit"; then
-    RESULT=$(curl -s --max-time 5 http://ip-api.com/json 2>/dev/null || true)
+FAIL=0
+
+# 1. tun2socks doit tourner
+if ! pgrep -f "tun2socks" > /dev/null 2>&1; then
+    echo "[-] Healthcheck failed: tun2socks not running"
+    FAIL=1
 fi
 
-if [ -z "$RESULT" ]; then
-    RESULT=$(curl -s --max-time 5 https://ifconfig.co/json 2>/dev/null || true)
+# 2. dnsproxy doit tourner
+if ! pgrep -f "dnsproxy" > /dev/null 2>&1; then
+    echo "[-] Healthcheck failed: dnsproxy not running"
+    FAIL=1
 fi
 
-if [ -z "$RESULT" ]; then
-    echo "[-] Healthcheck failed: Unable to connect through ISP gateway"
+# 3. L'interface tun0 doit exister et être up
+if ! ip link show tun0 > /dev/null 2>&1; then
+    echo "[-] Healthcheck failed: tun0 interface missing"
+    FAIL=1
+fi
+
+if [ "$FAIL" -eq 1 ]; then
     exit 1
 fi
 
-IP=$(echo "$RESULT" | jq -r '.ip // empty' 2>/dev/null || echo "$RESULT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
-ORG=$(echo "$RESULT" | jq -r '.org // "Unknown"' 2>/dev/null || echo "Unknown")
-CITY=$(echo "$RESULT" | jq -r '.city // "Unknown"' 2>/dev/null || echo "Unknown")
-COUNTRY=$(echo "$RESULT" | jq -r '.country // "Unknown"' 2>/dev/null || echo "Unknown")
-
+# Info (non bloquant) : connectivité externe si disponible
+IP=$(curl -s -k --max-time 3 https://ipinfo.io/json 2>/dev/null | jq -r '.ip // empty' 2>/dev/null || true)
 if [ -n "$IP" ]; then
-    echo "[✓] ISP Gateway Healthy | Public IP: $IP | Location: $CITY, $COUNTRY | Org: $ORG"
-    exit 0
+    echo "[✓] ISP Gateway Healthy (processus OK, egress: $IP)"
 else
-    echo "[-] Healthcheck failed: Invalid response"
-    exit 1
+    echo "[✓] ISP Gateway Healthy (processus OK, proxy amont injoignable)"
 fi
+exit 0
