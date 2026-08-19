@@ -1,4 +1,4 @@
-name: CD - Deploy to Microsoft Azure VPS
+name: CD - Deploy to Azure VPS
 
 on:
   push:
@@ -15,6 +15,9 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Validate compose file
+        run: docker compose config --quiet
+
       - name: Deploy via SSH to Azure
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -26,22 +29,37 @@ jobs:
             set -e
             APP_DIR="/opt/proxy_docker"
             echo "🚀 [Deploy] Accès au dossier $APP_DIR..."
-            
+
             if [ ! -d "$APP_DIR" ]; then
               echo "[-] Dossier $APP_DIR introuvable sur le serveur."
               exit 1
             fi
-            
+
             cd "$APP_DIR"
-            
+
             echo "📥 [Deploy] Récupération de la dernière version (Git Pull)..."
             git pull origin main
-            
-            echo "🐳 [Deploy] Reconstruction et redémarrage des conteneurs Docker..."
-            docker compose down --remove-orphans || true
-            docker compose up -d --build
-            
-            echo "🧹 [Deploy] Nettoyage des images orphelines..."
-            docker image prune -f
-            
+
+            echo "🔍 [Deploy] Validation de la configuration compose..."
+            docker compose config --quiet
+
+            echo "🐳 [Deploy] Reconstruction et redémarrage (sans down destructeur)..."
+            docker compose up -d --build --remove-orphans
+
+            echo "⏳ [Deploy] Attente du healthcheck de la passerelle (max 90s)..."
+            for i in $(seq 1 18); do
+              if docker inspect -f '{{.State.Health.Status}}' gateway-isp 2>/dev/null | grep -q healthy; then
+                echo "✅ [Deploy] Passerelle saine après $((i * 5))s."
+                break
+              fi
+              if [ "$i" -eq 18 ]; then
+                echo "❌ [Deploy] La passerelle n'est pas devenue healthy après 90s."
+                exit 1
+              fi
+              sleep 5
+            done
+
+            echo "🧹 [Deploy] Nettoyage des images orphelines de plus de 72h..."
+            docker image prune -f --filter "until=72h" || true
+
             echo "✅ [Deploy] Déploiement Azure terminé avec succès !"

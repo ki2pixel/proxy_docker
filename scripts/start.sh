@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$DIR"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$DIR/lib.sh"
 
-PROJECT_NAME="proxy_docker"
+cd "$PROJECT_ROOT"
 
 echo "========================================================"
 echo " Démarrage de la Passerelle Dédiée ISP / Residential"
@@ -15,16 +15,25 @@ if [ ! -f .env ]; then
   cp .env.example .env
 fi
 
-# Lire les variables depuis .env
-PROXY_HOST=$(grep -E "^ISP_PROXY_HOST=" .env | head -n1 | cut -d'=' -f2- | tr -d '"\r\n' || echo "194.70.234.170")
-PROXY_PORT=$(grep -E "^ISP_PROXY_PORT=" .env | head -n1 | cut -d'=' -f2- | tr -d '"\r\n' || echo "1085")
-PROXY_PROTO=$(grep -E "^ISP_PROXY_PROTOCOL=" .env | head -n1 | cut -d'=' -f2- | tr -d '"\r\n' || echo "socks5")
-PROFILES=$(grep -E "^COMPOSE_PROFILES=" .env | head -n1 | cut -d'=' -f2- | tr -d '"\r\n' || echo "repocket")
-PORT=$(grep -E "^DASHBOARD_PORT=" .env | head -n1 | cut -d'=' -f2- | tr -d '"\r\n' || echo "8088")
+load_env
 
-echo "[*] Proxy ISP Configuré   : $PROXY_PROTO://$PROXY_HOST:$PROXY_PORT"
+# Refuser de démarrer avec des credentials placeholder
+if grep -qE "CHANGEME_|votre_" .env; then
+  echo "[-] ERREUR : le fichier .env contient encore des valeurs placeholder."
+  echo "[-] Renseignez DASHBOARD_TOKEN, DASHBOARD_SECRET et les identifiants fournisseurs."
+  exit 1
+fi
+
+# Lecture des variables via la bibliothèque
+PROXY_HOST=$(get_env ISP_PROXY_HOST)
+PROXY_PORT=$(get_env ISP_PROXY_PORT)
+PROXY_PROTO=$(get_env ISP_PROXY_PROTOCOL "socks5")
+PROFILES=$(get_env COMPOSE_PROFILES "repocket")
+PORT=$(get_env DASHBOARD_PORT "8088")
+
+echo "[*] Proxy ISP Configuré   : ${PROXY_PROTO:-socks5}://${PROXY_HOST:-non défini}:${PROXY_PORT:-non défini}"
 echo "[*] Profil(s) Actif(s)    : $PROFILES"
-echo "[*] Dashboard Web         : http://localhost:${PORT}"
+echo "[*] Dashboard Web         : http://localhost:${PORT} (tunnel SSH requis si distant)"
 echo "[*] Construction et démarrage des conteneurs..."
 
 docker compose -p "$PROJECT_NAME" up -d --build

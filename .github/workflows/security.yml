@@ -1,0 +1,55 @@
+name: Security Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  secrets:
+    name: Secret Scanning (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  shellcheck:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Run shellcheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          severity: warning
+          ignore_paths: controller/public
+
+  audit:
+    name: npm audit + tests controller
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: controller
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: controller/package-lock.json
+      - name: Install dependencies
+        run: npm ci --omit=dev
+      - name: npm audit
+        run: npm audit --omit=dev
+      - name: Run tests
+        run: npm test

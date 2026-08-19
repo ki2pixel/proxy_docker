@@ -1,6 +1,7 @@
 services:
   # --------------------------------------------------------------------------
-  # Tableau de Bord Web & Contrôleur d'Orchestration ISP (Port 8088 -> 8080)
+  # Tableau de Bord Web & Contrôleur d'Orchestration ISP
+  # Accès : tunnel SSH local (ssh -L 8088:localhost:8088) ou Caddy si TLS
   # --------------------------------------------------------------------------
   dashboard:
     build:
@@ -10,22 +11,32 @@ services:
     container_name: isp-dashboard
     restart: unless-stopped
     ports:
-      - "${DASHBOARD_PORT:-8088}:8080"
+      - "127.0.0.1:${DASHBOARD_PORT:-8088}:8080"
     environment:
       - PORT=8080
       - APP_DIR=/workspace
       - DASHBOARD_PORT=${DASHBOARD_PORT:-8088}
-      - SOCKS_PORT=${SOCKS_PORT:-23321}
-      - ISP_PROXY_HOST=${ISP_PROXY_HOST:-194.70.234.170}
-      - ISP_PROXY_PORT=${ISP_PROXY_PORT:-1085}
+      - ISP_PROXY_HOST=${ISP_PROXY_HOST:-}
+      - ISP_PROXY_PORT=${ISP_PROXY_PORT:-}
       - ISP_PROXY_PROTOCOL=${ISP_PROXY_PROTOCOL:-socks5}
       - COMPOSE_PROFILES=${COMPOSE_PROFILES:-repocket}
+      - DASHBOARD_TOKEN=${DASHBOARD_TOKEN:?DASHBOARD_TOKEN doit être défini dans .env}
+      - DASHBOARD_SECRET=${DASHBOARD_SECRET:?DASHBOARD_SECRET doit être défini dans .env}
+      - AUTO_ROTATE_SESSION=${AUTO_ROTATE_SESSION:-true}
+      - AUTO_ROTATE_INTERVAL=${AUTO_ROTATE_INTERVAL:-50}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - .:/workspace
+      - ./docker-compose.yml:/workspace/docker-compose.yml:ro
+      - ./.env:/workspace/.env
     depends_on:
       gateway-isp:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # --------------------------------------------------------------------------
   # Passerelle Dédiée ISP / Residential Gateway (tun2socks + DoH dnsproxy)
@@ -37,28 +48,35 @@ services:
     image: gateway-isp:latest
     container_name: gateway-isp
     restart: unless-stopped
+    cap_drop:
+      - ALL
     cap_add:
       - NET_ADMIN
     devices:
       - /dev/net/tun:/dev/net/tun
-    ports:
-      # Local SOCKS5 forwarder for testing from host machine (via socat)
-      - "${SOCKS_PORT:-23321}:23320"
     environment:
       - ISP_PROXY_PROTOCOL=${ISP_PROXY_PROTOCOL:-socks5}
-      - ISP_PROXY_HOST=${ISP_PROXY_HOST:-194.70.234.170}
-      - ISP_PROXY_PORT=${ISP_PROXY_PORT:-1085}
+      - ISP_PROXY_HOST=${ISP_PROXY_HOST:-}
+      - ISP_PROXY_PORT=${ISP_PROXY_PORT:-}
       - ISP_PROXY_USER=${ISP_PROXY_USER:-}
       - ISP_PROXY_PASS=${ISP_PROXY_PASS:-}
       - LOGLEVEL=${GATEWAY_LOGLEVEL:-warning}
       - AUTO_ROTATE_SESSION=${AUTO_ROTATE_SESSION:-true}
       - AUTO_ROTATE_INTERVAL=${AUTO_ROTATE_INTERVAL:-50}
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "/usr/local/bin/healthcheck.sh"]
-      interval: 5s
-      timeout: 3s
+      interval: 10s
+      timeout: 5s
       retries: 3
-      start_period: 2s
+      start_period: 30s
 
   # --------------------------------------------------------------------------
   # 1. Proxyrack PoP Client
@@ -81,6 +99,20 @@ services:
       - DEVICE_NAME=${DEVICE_NAME:-Docker-ISP-Proxyrack}
     volumes:
       - proxyrack_data:/app/data
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "script.js"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
   # --------------------------------------------------------------------------
   # 2. Honeygain Client
@@ -95,6 +127,14 @@ services:
       gateway-isp:
         condition: service_healthy
     command: ["-tou-accept", "-email", "${HONEYGAIN_EMAIL}", "-pass", "${HONEYGAIN_PASSWORD}", "-device", "${HONEYGAIN_DEVICE_NAME:-Docker-ISP-Honeygain}"]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # --------------------------------------------------------------------------
   # 3. PacketStream Client
@@ -110,6 +150,14 @@ services:
         condition: service_healthy
     environment:
       - CID=${PACKETSTREAM_CID:-}
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # --------------------------------------------------------------------------
   # 4. Pawns.app (IPRoyal) Client
@@ -124,6 +172,14 @@ services:
       gateway-isp:
         condition: service_healthy
     command: ["-email=${PAWNS_EMAIL}", "-password=${PAWNS_PASSWORD}", "-device-name=${PAWNS_DEVICE_NAME:-Docker-ISP-Pawns}", "-accept-tos"]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # --------------------------------------------------------------------------
   # 5. Repocket Client
@@ -140,7 +196,46 @@ services:
     environment:
       - RP_EMAIL=${REPOCKET_EMAIL:-}
       - RP_API_KEY=${REPOCKET_API_KEY:-}
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # --------------------------------------------------------------------------
+  # Caddy : Reverse Proxy TLS optionnel (profil "tls")
+  # Activez avec : COMPOSE_PROFILES="tls" + DASHBOARD_DOMAIN défini
+  # --------------------------------------------------------------------------
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: isp-caddy
+    restart: unless-stopped
+    profiles: ["tls"]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DASHBOARD_DOMAIN=${DASHBOARD_DOMAIN:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - dashboard
+    mem_limit: 128m
+    cpus: 0.25
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   proxyrack_data:
     driver: local
+  caddy_data:
+  caddy_config:

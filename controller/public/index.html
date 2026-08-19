@@ -18,6 +18,24 @@
   </div>
 
   <div class="app-layout">
+    <!-- Login Overlay -->
+    <div class="login-overlay hidden" id="login-overlay">
+      <div class="login-card glass-card">
+        <div class="login-icon">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <h2>Accès sécurisé</h2>
+        <p class="login-sub">Entrez le token de connexion défini dans <code>.env</code> (<code>DASHBOARD_TOKEN</code>)</p>
+        <form id="login-form">
+          <input type="password" id="login-token" class="search-input login-input" placeholder="Token d'accès" autocomplete="current-password" required autofocus>
+          <div class="login-error hidden" id="login-error"></div>
+          <button type="submit" class="btn btn-primary login-btn" id="login-btn">Se connecter</button>
+        </form>
+      </div>
+    </div>
+
     <!-- Navigation / Header -->
     <header class="glass-nav">
       <div class="brand">
@@ -48,6 +66,7 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
           Rafraîchir
         </button>
+        <button class="btn btn-secondary btn-sm" id="btn-logout" title="Se déconnecter">Déconnexion</button>
       </div>
     </header>
 
@@ -156,6 +175,27 @@
           <div class="skeleton-card"></div>
           <div class="skeleton-card"></div>
           <div class="skeleton-card"></div>
+        </div>
+      </section>
+
+      <!-- Configuration Section -->
+      <section class="section-container">
+        <div class="section-head">
+          <div class="section-title-group">
+            <h3>Configuration de la Stack</h3>
+            <p>Modification du fichier <code>.env</code> utilisé par les conteneurs</p>
+          </div>
+          <span class="config-scheme-badge" id="config-scheme-badge">Schéma : --</span>
+        </div>
+
+        <div class="glass-card config-card">
+          <form id="config-form">
+            <div id="config-fields"><!-- Rempli par JS --></div>
+            <div class="config-actions">
+              <button type="submit" class="btn btn-secondary" id="btn-config-save">Enregistrer</button>
+              <button type="button" class="btn btn-primary" id="btn-config-apply">Enregistrer & Appliquer</button>
+            </div>
+          </form>
         </div>
       </section>
 

@@ -2,12 +2,17 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-RUN apk add --no-cache curl bash docker-cli docker-cli-compose python3
+# curl pour le healthcheck ; pas de docker-cli (l'orchestration passe par l'API socket)
+RUN apk add --no-cache curl wget
 
-COPY package.json ./
-RUN npm install --production
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 
 COPY . .
+
+# Non-root
+RUN chown -R node:node /app
+USER node
 
 EXPOSE 8080
 

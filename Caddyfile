@@ -1,0 +1,25 @@
+# Caddyfile — Reverse proxy TLS pour le dashboard ISP
+# Utilisé uniquement avec le profil compose "tls".
+# Si DASHBOARD_DOMAIN est défini : TLS Let's Encrypt automatique.
+# Sinon : HTTP local uniquement (accès via le port 8080 non publié).
+
+{$DASHBOARD_DOMAIN} {
+	reverse_proxy dashboard:8080
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+	}
+}
+
+# Fallback : si DASHBOARD_DOMAIN est vide, écoute sur le port interne 8081
+# (accessible uniquement depuis le host via le tunnel SSH).
+:8081 {
+	reverse_proxy dashboard:8080
+
+	header {
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+	}
+}

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$DIR"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$DIR/lib.sh"
+
+cd "$PROJECT_ROOT"
 
 echo "========================================================"
 echo " Bascule de Fournisseur de Monétisation"
@@ -55,12 +57,8 @@ if [ ! -f .env ]; then
   cp .env.example .env
 fi
 
-# Update COMPOSE_PROFILES in .env
-if grep -q "^COMPOSE_PROFILES=" .env; then
-  sed -i "s/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=$TARGET/" .env
-else
-  echo "COMPOSE_PROFILES=$TARGET" >> .env
-fi
+# Update COMPOSE_PROFILES in .env (via lib.sh, échappe les valeurs)
+set_env COMPOSE_PROFILES "$TARGET"
 
 echo "[+] Application des conteneurs via Docker Compose..."
 if [ "$TARGET" != "all" ]; then
@@ -81,8 +79,8 @@ if [ "$TARGET" != "all" ]; then
   done
 fi
 
-# Launch with the target profile
-COMPOSE_PROFILES="$TARGET" docker compose up -d
+# Launch with the target profile (projet compose cohérent : -p "$PROJECT_NAME")
+COMPOSE_PROFILES="$TARGET" docker compose -p "$PROJECT_NAME" up -d
 
 echo ""
 echo "[✓] Fournisseur actif configuré sur : $TARGET !"

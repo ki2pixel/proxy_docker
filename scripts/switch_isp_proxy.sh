@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$DIR"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$DIR/lib.sh"
 
-PROJECT_NAME="proxy_docker"
+cd "$PROJECT_ROOT"
 
 echo "========================================================"
 echo " Configuration du Proxy Dédié ISP / Residential"
@@ -12,45 +12,47 @@ echo "========================================================"
 
 if [ -n "$1" ]; then
     PROXY_INPUT="$1"
-    HOST=$(echo "$PROXY_INPUT" | cut -d':' -f1)
-    PORT=$(echo "$PROXY_INPUT" | cut -d':' -f2)
     PROTOCOL="${2:-socks5}"
-    
-    if [ -z "$PORT" ] || [ "$HOST" = "$PORT" ]; then
-        PORT="1080"
+    # Validation du protocole
+    if [ "$PROTOCOL" != "socks5" ] && [ "$PROTOCOL" != "http" ]; then
+        echo "[-] Protocole invalide : socks5 ou http attendu."
+        exit 1
     fi
-    
+
+    # Formats acceptés :
+    #   HOST:PORT                     (proxy sans auth)
+    #   HOST:PORT:USER:PASS           (schéma classique)
+    #   HOST:PORT:USER:PASS:session-X (session résidentielle)
+    IFS=':' read -r HOST PORT PROXY_USER PROXY_PASS _REST <<< "$PROXY_INPUT"
+
+    # Validation du format HOST:PORT (les identifiants peuvent contenir des
+    # caractères spéciaux comme @ ou &, ils ne sont pas validés ici)
+    if [[ ! "$HOST" =~ ^[A-Za-z0-9.-]+$ ]] || [[ ! "$PORT" =~ ^[0-9]+$ ]]; then
+        echo "[-] Format invalide : attendu HOST:PORT[:USER:PASS] (ex: proxy.example.com:1080:user:pass)"
+        exit 1
+    fi
+
     echo "[+] Configuration manuelle du proxy : $PROTOCOL://$HOST:$PORT"
-    python3 -c "
-from pathlib import Path
-env_file = Path('.env')
-if env_file.exists():
-    lines = env_file.read_text().splitlines()
-    new_lines = []
-    keys = {'ISP_PROXY_HOST': '\"$HOST\"', 'ISP_PROXY_PORT': '\"$PORT\"', 'ISP_PROXY_PROTOCOL': '\"$PROTOCOL\"'}
-    updated = set()
-    for l in lines:
-        matched = False
-        for k, v in keys.items():
-            if l.startswith(k + '='):
-                new_lines.append(f'{k}={v}')
-                updated.add(k)
-                matched = True
-                break
-        if not matched:
-            new_lines.append(l)
-    for k, v in keys.items():
-        if k not in updated:
-            new_lines.append(f'{k}={v}')
-    env_file.write_text('\n'.join(new_lines) + '\n')
-    print('[✓] .env mis à jour avec succès.')
-"
+    set_env ISP_PROXY_HOST "$HOST"
+    set_env ISP_PROXY_PORT "$PORT"
+    set_env ISP_PROXY_PROTOCOL "$PROTOCOL"
+    if [ -n "$PROXY_USER" ]; then
+        set_env ISP_PROXY_USER "$PROXY_USER"
+        echo "[+] Utilisateur configuré : ${PROXY_USER%%:*}"
+    fi
+    if [ -n "$PROXY_PASS" ]; then
+        set_env ISP_PROXY_PASS "$PROXY_PASS"
+        echo "[+] Mot de passe configuré (masqué)."
+    fi
 else
     echo "Usage :"
     echo "  ./scripts/switch_isp_proxy.sh <HOST:PORT> [socks5|http]"
-    echo "Exemple :"
+    echo "  ./scripts/switch_isp_proxy.sh <HOST:PORT:USER:PASS> [socks5|http]"
+    echo "Exemples :"
     echo "  ./scripts/switch_isp_proxy.sh proxy.flameproxies.com:1080 socks5"
+    echo "  ./scripts/switch_isp_proxy.sh proxy.example.com:1080:monuser:monpass socks5"
     echo ""
+    exit 1
 fi
 
 if docker ps --format '{{.Names}}' | grep -q "gateway-isp"; then

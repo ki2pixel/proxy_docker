@@ -40,7 +40,7 @@ graph LR
 1. **Transparence L3 Intégrale :** Aucun paramétrage de proxy interne n'est requis dans les applications de monétisation.
 2. **Résolveur DNS-over-HTTPS (DoH) Intégré :** Les proxys SOCKS5 ne gèrent pas toujours le trafic UDP brut. Le composant `dnsproxy` écoute localement sur `127.0.0.1:53` et achemine les résolutions DNS via HTTPS (`1.1.1.1` et `8.8.8.8`) à travers le proxy.
 3. **Zéro Fuite d'IP Locale (Kill-Switch) :** En cas d'interruption du proxy distant, le trafic est bloqué et ne retombe jamais sur votre connexion personnelle.
-4. **Bridge Local de Diagnostic :** Le port hôte `23321` (mappé sur `23320`) permet de tester la connexion proxy directement depuis la machine hôte via `curl --socks5 127.0.0.1:23321`.
+4. **Bridge Local de Diagnostic (interne) :** Le conteneur `gateway-isp` expose un pont SOCKS5 sur `127.0.0.1:23320` (loopback uniquement, plus de port publié sur le host depuis le durcissement). Testez depuis le dashboard ou avec `./scripts/test_proxy.sh` (passe par `docker exec gateway-isp`).
 
 ---
 
@@ -100,4 +100,4 @@ COMPOSE_PROFILES="repocket"
 | :--- | :--- | :--- | :--- |
 | **Passerelle `gateway-isp`** | [✓] Healthy | `194.70.234.223` (Paris, FR) | Latence ~240 ms, DoH Cloudflare opérationnel |
 | **Repocket** | [✓] Actif & Connecté | `194.70.234.223` (Paris, FR) | Authentification 200 OK, `markPeerAsAlive` |
-| **Bridge Local Hôte (Port 23321)** | [✓] Opérationnel | `194.70.234.223` (Paris, FR) | Test curl réussi avec succès |
+| **Bridge Local (interne 127.0.0.1:23320)** | [✓] Opérationnel | `194.70.234.223` (Paris, FR) | Test curl réussi via `./scripts/test_proxy.sh` |

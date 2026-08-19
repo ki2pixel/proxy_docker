@@ -16,11 +16,17 @@ FWMARK="0x22b"
 # Configuration Proxy
 PROTOCOL="${ISP_PROXY_PROTOCOL:-socks5}"
 HOST="${ISP_PROXY_HOST:-}"
-PORT="${ISP_PROXY_PORT:-1085}"
+PORT="${ISP_PROXY_PORT:-}"
 USER="${ISP_PROXY_USER:-}"
 PASS="${ISP_PROXY_PASS:-}"
 AUTO_ROTATE="${AUTO_ROTATE_SESSION:-true}"
 AUTO_ROTATE_INTERVAL="${AUTO_ROTATE_INTERVAL:-50}" # Rotation préventive en minutes (0 = désactivé)
+
+# Validation numérique (sinon défaut)
+if ! [[ "$AUTO_ROTATE_INTERVAL" =~ ^[0-9]+$ ]]; then
+    echo "[!] AUTO_ROTATE_INTERVAL invalide ('$AUTO_ROTATE_INTERVAL'), défaut à 50."
+    AUTO_ROTATE_INTERVAL=50
+fi
 
 build_proxy_uri() {
     if [ -n "$PROXY" ]; then
@@ -108,11 +114,11 @@ dnsproxy \
 # Update container resolv.conf to local DNS resolver
 echo "nameserver 127.0.0.1" > /etc/resolv.conf
 
-# 4. Optional Socat Bridge for Local Host Testing (Port 23320)
+# 4. Socat Bridge pour Test Local (Port 23320) — lié à loopback uniquement
 if [ -n "$HOST" ] && [ -n "$PORT" ]; then
-    echo "[+] Starting local socat bridge (port 23320 -> $HOST:$PORT)..."
+    echo "[+] Starting local socat bridge (127.0.0.1:23320 -> $HOST:$PORT)..."
     pkill socat 2>/dev/null || true
-    socat TCP-LISTEN:23320,fork,reuseaddr TCP:"$HOST":"$PORT" &
+    socat TCP-LISTEN:23320,bind=127.0.0.1,fork,reuseaddr TCP:"$HOST":"$PORT" &
 fi
 
 # 5. Tun2socks Process Management & Auto-Rotation Watchdog
@@ -130,30 +136,40 @@ start_tun2socks() {
     echo "[✓] tun2socks démarré (PID: $TUN2SOCKS_PID)"
 }
 
+# Arrêt propre de tun2socks : TERM puis wait avec timeout, sinon KILL
+stop_tun2socks() {
+    if [ -n "$TUN2SOCKS_PID" ] && kill -0 "$TUN2SOCKS_PID" 2>/dev/null; then
+        kill -TERM "$TUN2SOCKS_PID" 2>/dev/null || true
+        for _ in $(seq 1 5); do
+            kill -0 "$TUN2SOCKS_PID" 2>/dev/null || break
+            sleep 1
+        done
+        if kill -0 "$TUN2SOCKS_PID" 2>/dev/null; then
+            kill -9 "$TUN2SOCKS_PID" 2>/dev/null || true
+        fi
+        wait "$TUN2SOCKS_PID" 2>/dev/null || true
+    fi
+    TUN2SOCKS_PID=""
+}
+
 rotate_session() {
     local reason="${1:-failover}"
     if [[ "$USER" == *"session-"* ]]; then
-        local new_sess="live$(head -c 4 /dev/urandom | od -An -tu2 | tr -d ' ')"
+        local new_sess
+        new_sess="live$(head -c 4 /dev/urandom | od -An -tu2 | tr -d ' ')"
         USER=$(echo "$USER" | sed -E "s/session-[a-zA-Z0-9_-]+/session-${new_sess}/")
         echo "========================================================"
         echo "🔄 [Watchdog] Auto-rotation de session ($reason) -> session-${new_sess}"
         echo "========================================================"
         
-        # Arrêter l'instance courante de tun2socks
-        if [ -n "$TUN2SOCKS_PID" ]; then
-            kill -9 "$TUN2SOCKS_PID" 2>/dev/null || true
-        fi
-        sleep 1
+        stop_tun2socks
         start_tun2socks
         sleep 3
         # Diagnostic immédiat
         /usr/local/bin/healthcheck.sh || true
     else
         echo "[!] [Watchdog] Déconnexion détectée, redémarrage du tunnel..."
-        if [ -n "$TUN2SOCKS_PID" ]; then
-            kill -9 "$TUN2SOCKS_PID" 2>/dev/null || true
-        fi
-        sleep 1
+        stop_tun2socks
         start_tun2socks
     fi
 }
@@ -164,9 +180,15 @@ cleanup() {
     echo "[*] Stopping gateway services..."
     pkill dnsproxy 2>/dev/null || true
     pkill socat 2>/dev/null || true
-    if [ -n "$TUN2SOCKS_PID" ] && kill -0 "$TUN2SOCKS_PID" 2>/dev/null; then
-        kill -TERM "$TUN2SOCKS_PID" 2>/dev/null || true
-    fi
+    stop_tun2socks
+    # Nettoyage des règles de routage et du device TUN
+    echo "[*] Removing routing rules and TUN device..."
+    for p in 1000 1001 1002 1003 1004 1005 1006 1007 1008 1009 2000 2001; do
+        ip rule del pref "$p" 2>/dev/null || true
+    done
+    ip rule del not fwmark "$FWMARK" table "$TABLE" 2>/dev/null || true
+    ip rule del fwmark "$FWMARK" to "$ADDR" prohibit 2>/dev/null || true
+    ip link del "$TUN" 2>/dev/null || true
     exit 0
 }
 
@@ -190,7 +212,6 @@ echo "🛡️ Watchdog de Surveillance & Auto-Guérison Activé"
 echo "========================================================"
 
 FAIL_COUNT=0
-SESSION_START_TIME=$(date +%s)
 MAX_FAILURES=2
 CHECK_INTERVAL=20
 
@@ -204,20 +225,8 @@ while true; do
         continue
     fi
 
-    # 1. Rotation préventive temporelle (ex: toutes les 50 minutes)
-    if [ "$AUTO_ROTATE_INTERVAL" -gt 0 ] && [[ "$USER" == *"session-"* ]]; then
-        CURRENT_TIME=$(date +%s)
-        ELAPSED_MIN=$(( (CURRENT_TIME - SESSION_START_TIME) / 60 ))
-        if [ "$ELAPSED_MIN" -ge "$AUTO_ROTATE_INTERVAL" ]; then
-            echo "[*] [Watchdog] Intervalle préventif atteint (${ELAPSED_MIN}m / ${AUTO_ROTATE_INTERVAL}m)."
-            rotate_session "préventive"
-            SESSION_START_TIME=$(date +%s)
-            FAIL_COUNT=0
-            continue
-        fi
-    fi
-
-    # 2. Test de connectivité actif (Failover)
+    # Test de connectivité actif (Failover uniquement — la rotation préventive
+    # est déclenchée par le controller via /api/proxy/rotate)
     if [ "$AUTO_ROTATE" = "true" ]; then
         if curl -s --max-time 4 http://ip-api.com/json >/dev/null 2>&1 || \
            curl -s -k --max-time 4 https://ipinfo.io/json >/dev/null 2>&1 || \
@@ -228,7 +237,6 @@ while true; do
             echo "[!] [Watchdog] Échec du test de connectivité ($FAIL_COUNT/$MAX_FAILURES)..."
             if [ "$FAIL_COUNT" -ge "$MAX_FAILURES" ]; then
                 rotate_session "perte de connexion"
-                SESSION_START_TIME=$(date +%s)
                 FAIL_COUNT=0
             fi
         fi

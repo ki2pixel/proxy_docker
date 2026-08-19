@@ -15,7 +15,8 @@ const FLAGS = {
 const state = {
   status: null,
   activeLogTarget: 'system',
-  eventSource: null
+  eventSource: null,
+  authenticated: false
 };
 
 // DOM Elements
@@ -50,11 +51,104 @@ function showToast(message, type = 'success') {
 }
 
 // -----------------------------------------------------------------------------
+// 0. Authentification
+// -----------------------------------------------------------------------------
+function getCookie(name) {
+  const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function showLogin() {
+  state.authenticated = false;
+  if (state.eventSource) {
+    state.eventSource.close();
+    state.eventSource = null;
+  }
+  document.getElementById('login-overlay').classList.remove('hidden');
+}
+
+function hideLogin() {
+  document.getElementById('login-overlay').classList.add('hidden');
+}
+
+async function doLogin(token) {
+  const res = await fetch('/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token })
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Token invalide');
+  }
+  state.authenticated = true;
+}
+
+async function doLogout() {
+  try {
+    await fetch('/api/logout', { method: 'POST' });
+  } catch { /* cookie supprimé côté client de toute façon */ }
+  document.cookie = 'session=; Max-Age=0; path=/';
+  document.cookie = 'csrf=; Max-Age=0; path=/';
+  state.authenticated = false;
+  showLogin();
+  showToast('Déconnecté', 'info');
+}
+
+// Fetch wrapper : ajoute le header CSRF sur les mutations, gère les 401
+async function apiFetch(url, options = {}) {
+  const opts = { ...options };
+  opts.headers = { ...(opts.headers || {}) };
+  const method = (opts.method || 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') {
+    const csrf = getCookie('csrf');
+    if (csrf) opts.headers['X-CSRF-Token'] = csrf;
+  }
+  const res = await fetch(url, opts);
+  if (res.status === 401) {
+    showLogin();
+    throw new Error('Session expirée');
+  }
+  return res;
+}
+
+// Login form
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const input = document.getElementById('login-token');
+  const btn = document.getElementById('login-btn');
+  const errorEl = document.getElementById('login-error');
+  errorEl.classList.add('hidden');
+  btn.disabled = true;
+  btn.textContent = 'Connexion...';
+  try {
+    await doLogin(input.value.trim());
+    input.value = '';
+    hideLogin();
+    showToast('Connecté au dashboard', 'success');
+    await initAuthenticated();
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Se connecter';
+  }
+});
+
+// Logout button
+const logoutBtn = document.getElementById('btn-logout');
+if (logoutBtn) {
+  logoutBtn.addEventListener('click', doLogout);
+}
+
+// -----------------------------------------------------------------------------
 // 1. Fetch & Render Status
 // -----------------------------------------------------------------------------
 async function fetchStatus() {
+  if (!state.authenticated) return;
   try {
-    const res = await fetch('/api/status');
+    const res = await apiFetch('/api/status');
     const data = await res.json();
     state.status = data;
     renderStatus(data);
@@ -151,7 +245,7 @@ function renderNodes(providers) {
 window.nodeAction = async function(id, action) {
   showToast(`Action ${action} en cours sur ${id}...`, 'info');
   try {
-    const res = await fetch(`/api/providers/${id}/${action}`, { method: 'POST' });
+    const res = await apiFetch(`/api/providers/${id}/${action}`, { method: 'POST' });
     const data = await res.json();
     if (data.success) {
       showToast(data.message, 'success');
@@ -160,7 +254,7 @@ window.nodeAction = async function(id, action) {
       showToast(data.error || 'Erreur lors de l\'action', 'error');
     }
   } catch (err) {
-    showToast(err.message, 'error');
+    if (err.message !== 'Session expirée') showToast(err.message, 'error');
   }
 };
 
@@ -182,7 +276,7 @@ if (rotateIpBtn) {
   rotateIpBtn.addEventListener('click', async () => {
     showToast('Rotation de l\'adresse IP en cours...', 'info');
     try {
-      const res = await fetch('/api/proxy/rotate', { method: 'POST' });
+      const res = await apiFetch('/api/proxy/rotate', { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         showToast(data.message || `Nouvelle IP : ${data.ip}`, 'success');
@@ -191,7 +285,7 @@ if (rotateIpBtn) {
         showToast(data.error || 'Erreur lors de la rotation', 'error');
       }
     } catch (err) {
-      showToast(err.message, 'error');
+      if (err.message !== 'Session expirée') showToast(err.message, 'error');
     }
   });
 }
@@ -224,6 +318,160 @@ document.getElementById('btn-restart-all-nodes').addEventListener('click', async
 });
 
 // -----------------------------------------------------------------------------
+// 3b. Configuration (.env) — édition depuis le dashboard
+// -----------------------------------------------------------------------------
+const CATEGORY_LABELS = {
+  gateway: 'Passerelle ISP',
+  dashboard: 'Dashboard',
+  providers: 'Fournisseurs'
+};
+
+async function fetchConfig() {
+  if (!state.authenticated) return;
+  try {
+    const res = await apiFetch('/api/config');
+    if (!res.ok) return;
+    const data = await res.json();
+    renderConfig(data.config, data.proxyScheme);
+  } catch (err) {
+    console.error('Error fetching config:', err);
+  }
+}
+
+function renderConfig(config, proxyScheme) {
+  const badge = document.getElementById('config-scheme-badge');
+  if (badge) {
+    badge.textContent = proxyScheme === 'session'
+      ? 'Schéma : session résidentielle (rotation auto)'
+      : 'Schéma : classique (HOST:PORT:USER:PASS)';
+  }
+
+  const container = document.getElementById('config-fields');
+  container.innerHTML = '';
+
+  const groups = {};
+  for (const item of config) {
+    (groups[item.category] = groups[item.category] || []).push(item);
+  }
+
+  for (const [category, items] of Object.entries(groups)) {
+    const group = document.createElement('div');
+    group.className = 'config-group';
+
+    const title = document.createElement('div');
+    title.className = 'config-group-title';
+    title.textContent = CATEGORY_LABELS[category] || category;
+    group.appendChild(title);
+
+    const grid = document.createElement('div');
+    grid.className = 'config-grid';
+
+    for (const item of items) {
+      const field = document.createElement('div');
+      field.className = 'config-field';
+
+      const label = document.createElement('label');
+      label.setAttribute('for', `cfg-${item.key}`);
+      label.textContent = item.label;
+      if (item.sensitive) {
+        const dot = document.createElement('span');
+        dot.className = 'config-secret-dot';
+        dot.textContent = ' 🔒';
+        label.appendChild(dot);
+      }
+      field.appendChild(label);
+
+      let input;
+      if (item.options) {
+        input = document.createElement('select');
+        input.id = `cfg-${item.key}`;
+        input.dataset.key = item.key;
+        for (const opt of item.options) {
+          const option = document.createElement('option');
+          option.value = opt;
+          option.textContent = opt;
+          if (item.value === opt) option.selected = true;
+          input.appendChild(option);
+        }
+      } else {
+        input = document.createElement('input');
+        input.id = `cfg-${item.key}`;
+        input.dataset.key = item.key;
+        input.type = item.sensitive ? 'password' : 'text';
+        input.autocomplete = 'off';
+        if (item.sensitive) {
+          input.placeholder = item.hasValue ? '•••••• (vide = inchangé)' : 'Non défini';
+        } else {
+          input.value = item.value || '';
+          input.placeholder = 'Non défini';
+        }
+      }
+      field.appendChild(input);
+      grid.appendChild(field);
+    }
+
+    group.appendChild(grid);
+    container.appendChild(group);
+  }
+}
+
+function collectConfigUpdates() {
+  const updates = {};
+  document.querySelectorAll('#config-fields [data-key]').forEach(el => {
+    const value = el.value.trim();
+    // Champ sensible vide = inchangé (null)
+    if (value === '' && el.type === 'password') {
+      updates[el.dataset.key] = null;
+    } else if (value !== '') {
+      updates[el.dataset.key] = value;
+    }
+  });
+  return updates;
+}
+
+async function saveConfig(apply) {
+  const updates = collectConfigUpdates();
+  if (Object.values(updates).every(v => v === null)) {
+    showToast('Aucune modification à enregistrer', 'info');
+    return;
+  }
+  try {
+    const res = await apiFetch('/api/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates, apply })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.applied ? 'Configuration enregistrée et appliquée' : 'Configuration enregistrée', 'success');
+      await fetchConfig();
+      if (data.applied) setTimeout(fetchStatus, 2000);
+    } else {
+      showToast(data.error || 'Erreur lors de l\'enregistrement', 'error');
+    }
+  } catch (err) {
+    if (err.message !== 'Session expirée') showToast(err.message, 'error');
+  }
+}
+
+const configForm = document.getElementById('config-form');
+if (configForm) {
+  configForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    saveConfig(false);
+  });
+}
+
+const btnConfigApply = document.getElementById('btn-config-apply');
+if (btnConfigApply) {
+  btnConfigApply.addEventListener('click', () => {
+    if (confirm('Appliquer la configuration ? Les conteneurs concernés seront redémarrés (brève coupure).')) {
+      saveConfig(true);
+    }
+  });
+}
+
+// -----------------------------------------------------------------------------
 // 4. Real-time Logs Terminal & SSE
 // -----------------------------------------------------------------------------
 function setupLogsSSE() {
@@ -240,6 +488,12 @@ function setupLogsSSE() {
       }
     }
   };
+  // Si le serveur rejette le flux (401), retour à l'écran de connexion
+  state.eventSource.onerror = () => {
+    if (state.eventSource && state.eventSource.readyState === EventSource.CLOSED && state.authenticated) {
+      showLogin();
+    }
+  };
 }
 
 function appendLogLine(line) {
@@ -253,7 +507,7 @@ function appendLogLine(line) {
 async function fetchContainerLogs(name) {
   terminalBodyEl.innerHTML = `<div class="log-line">[LOGS] Récupération des logs du conteneur ${name}...</div>`;
   try {
-    const res = await fetch(`/api/logs/container/${name}?tail=80`);
+    const res = await apiFetch(`/api/logs/container/${name}?tail=80`);
     const data = await res.json();
     terminalBodyEl.innerHTML = '';
     const lines = (data.logs || '').split('\n');
@@ -289,9 +543,25 @@ document.getElementById('btn-clear-logs').addEventListener('click', () => {
 // -----------------------------------------------------------------------------
 // Initialization
 // -----------------------------------------------------------------------------
-async function init() {
+async function initAuthenticated() {
+  state.authenticated = true;
   await fetchStatus();
+  fetchConfig();
   setupLogsSSE();
+}
+
+async function init() {
+  // Démarrage : vérifie si une session existe déjà (cookie valide)
+  try {
+    const res = await apiFetch('/api/status');
+    if (res.ok) {
+      await initAuthenticated();
+    } else {
+      showLogin();
+    }
+  } catch {
+    showLogin();
+  }
 
   // Periodic polling every 10 seconds
   setInterval(fetchStatus, 10000);

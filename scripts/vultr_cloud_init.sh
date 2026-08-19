@@ -41,8 +41,9 @@ fi
 if [ ! -c /dev/net/tun ]; then
     mkdir -p /dev/net
     mknod /dev/net/tun c 10 200
-    chmod 0666 /dev/net/tun
 fi
+# 0660 (root:root) : Docker root expose le device aux conteneurs via --device
+chmod 0660 /dev/net/tun
 echo "[✓] Module TUN opérationnel."
 
 # 4. Installation de Docker CE officiel et Docker Compose Plugin
@@ -83,10 +84,17 @@ if [ ! -f .env ]; then
     cp .env.example .env
 fi
 
+# Vérification : refuser de démarrer avec des credentials placeholder
+if grep -qE "CHANGEME_|votre_" .env; then
+    echo "[-] ERREUR : le fichier .env contient encore des valeurs placeholder."
+    echo "[-] Renseignez toutes les valeurs (notamment DASHBOARD_TOKEN, DASHBOARD_SECRET"
+    echo "[-] et les identifiants des fournisseurs) puis relancez ce script."
+    exit 1
+fi
+
 # 6. Configuration du Pare-feu UFW
-echo "[6/6] Configuration du Pare-feu (SSH 22, Dashboard 8088)..."
+echo "[6/6] Configuration du Pare-feu (SSH 22 uniquement)..."
 ufw allow 22/tcp || true
-ufw allow 8088/tcp || true
 ufw --force enable || true
 
 # Lancement des conteneurs
@@ -95,5 +103,5 @@ docker compose -p proxy_docker up -d --build
 
 echo "========================================================"
 echo "✅ Déploiement Vultr terminé avec succès !"
-echo "🌐 Dashboard Web : http://$(curl -s https://api.ipify.org):8088"
+echo "🌐 Dashboard : accessible via tunnel SSH : ssh -L 8088:localhost:8088 root@$(curl -s https://api.ipify.org)"
 echo "========================================================"

@@ -42,14 +42,27 @@ fi
 if [ ! -c /dev/net/tun ]; then
     mkdir -p /dev/net
     mknod /dev/net/tun c 10 200
-    chmod 0666 /dev/net/tun
 fi
+# 0660 (root:root) : Docker root expose le device aux conteneurs via --device
+chmod 0660 /dev/net/tun
 echo "[✓] Module TUN opérationnel."
 
 # 4. Installation Officielle de Docker Engine & Docker Compose (Script Universel)
 echo "[4/6] Installation officielle de Docker CE via get.docker.com..."
 if ! command -v docker &>/dev/null; then
     curl -fsSL https://get.docker.com -o get-docker.sh
+    # Vérification du checksum SHA256 publié (à épingler pour un déploiement reproductible)
+    EXPECTED_SHA256=""
+    if [ -n "$EXPECTED_SHA256" ]; then
+        ACTUAL_SHA256=$(sha256sum get-docker.sh | awk '{print $1}')
+        if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+            echo "[-] Checksum de get-docker.sh invalide : $ACTUAL_SHA256"
+            rm -f get-docker.sh
+            exit 1
+        fi
+    else
+        echo "[!] Aucun checksum épinglé pour get-docker.sh — installation à partir du script officiel."
+    fi
     sh get-docker.sh
     rm -f get-docker.sh
     systemctl enable --now docker
@@ -76,10 +89,17 @@ if [ ! -f .env ]; then
     cp .env.example .env
 fi
 
+# Vérification : refuser de démarrer avec des credentials placeholder
+if grep -qE "CHANGEME_|votre_" .env; then
+    echo "[-] ERREUR : le fichier .env contient encore des valeurs placeholder."
+    echo "[-] Renseignez toutes les valeurs (notamment DASHBOARD_TOKEN, DASHBOARD_SECRET"
+    echo "[-] et les identifiants des fournisseurs) puis relancez ce script."
+    exit 1
+fi
+
 # 6. Pare-feu & Démarrage
-echo "[6/6] Configuration du Pare-feu UFW (SSH 22, Dashboard 8088)..."
+echo "[6/6] Configuration du Pare-feu UFW (SSH 22 uniquement)..."
 ufw allow 22/tcp || true
-ufw allow 8088/tcp || true
 ufw --force enable || true
 
 # Lancement des conteneurs
@@ -88,5 +108,5 @@ docker compose -p proxy_docker up -d --build
 
 echo "========================================================"
 echo "✅ Déploiement DigitalOcean terminé avec succès !"
-echo "🌐 Dashboard Web : http://$(curl -s https://api.ipify.org):8088"
+echo "🌐 Dashboard : accessible via tunnel SSH : ssh -L 8088:localhost:8088 root@$(curl -s https://api.ipify.org)"
 echo "========================================================"

@@ -15,10 +15,12 @@ RUN apt-get update && \
         curl \
         wget \
         netcat-traditional \
-        procps && \
+        procps \
+        nodejs \
+        npm && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Node.js 20 LTS
+# Install Node.js 20 LTS (via nodesource, épinglé)
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
@@ -27,6 +29,11 @@ WORKDIR /app
 
 COPY run.sh /app/run.sh
 RUN chmod +x /app/run.sh
+
+# Non-root : l'utilisateur node a besoin d'écrire dans /app/data et /app
+RUN useradd -m -u 1000 -s /bin/bash proxyrack && \
+    chown -R proxyrack:proxyrack /app
+USER proxyrack
 
 VOLUME ["/app/data"]
 

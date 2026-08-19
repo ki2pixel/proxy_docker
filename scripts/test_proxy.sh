@@ -1,37 +1,62 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-# Test de connectivité proxy ISP via le bridge local (port 23321) ou un proxy distant
-PROXY_HOST="${1:-127.0.0.1}"
-PROXY_PORT="${2:-23321}"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$DIR/lib.sh"
+
+cd "$PROJECT_ROOT"
+
+# Test de connectivité proxy ISP via le conteneur gateway-isp (par défaut)
+# Usage : ./scripts/test_proxy.sh [HOST:PORT] [socks5|http]
+PROXY_HOST="${1:-gateway-isp}"
+PROXY_PORT="${2:-23320}"
 PROTOCOL="${3:-socks5}"
 
-USER=""
-PASS=""
-if [ -f .env ]; then
-    USER=$(grep -E "^ISP_PROXY_USER=" .env | head -n1 | cut -d'=' -f2- | tr -d '"\r\n' || true)
-    PASS=$(grep -E "^ISP_PROXY_PASS=" .env | head -n1 | cut -d'=' -f2- | tr -d '"\r\n' || true)
+# Validation des entrées
+if ! [[ "$PROXY_HOST" =~ ^[A-Za-z0-9.-]+$ ]]; then
+    echo "[-] Hôte invalide : $PROXY_HOST"
+    exit 1
 fi
+if ! [[ "$PROXY_PORT" =~ ^[0-9]+$ ]]; then
+    echo "[-] Port invalide : $PROXY_PORT"
+    exit 1
+fi
+if [ "$PROTOCOL" != "socks5" ] && [ "$PROTOCOL" != "http" ]; then
+    echo "[-] Protocole invalide : socks5 ou http attendu."
+    exit 1
+fi
+
+load_env
+USER=$(get_env ISP_PROXY_USER)
+PASS=$(get_env ISP_PROXY_PASS)
 
 echo "========================================================"
 echo " Test de Connectivité Proxy ISP ($PROTOCOL://$PROXY_HOST:$PROXY_PORT)"
 echo "========================================================"
 
-AUTH_FLAG=""
-if [ -n "$USER" ] && [ -n "$PASS" ]; then
-    AUTH_FLAG="--proxy-user $USER:$PASS"
-fi
-
+# Construit le tableau d'arguments curl (pas de shell, pas d'injection)
+CURL_ARGS=(-s --max-time 8)
 if [ "$PROTOCOL" = "socks5" ]; then
-    CMD="curl -s --max-time 8 $AUTH_FLAG --socks5 $PROXY_HOST:$PROXY_PORT https://ipinfo.io/json"
+    CURL_ARGS+=(--socks5 "$PROXY_HOST:$PROXY_PORT")
 else
-    CMD="curl -s --max-time 8 $AUTH_FLAG -x http://$PROXY_HOST:$PROXY_PORT https://ipinfo.io/json"
+    CURL_ARGS+=(-x "http://$PROXY_HOST:$PROXY_PORT")
 fi
+if [ -n "$USER" ] && [ -n "$PASS" ]; then
+    CURL_ARGS+=(--proxy-user "$USER:$PASS")
+fi
+CURL_ARGS+=(https://ipinfo.io/json)
 
-echo "[*] Exécution : $CMD"
-RESULT=$(eval "$CMD" 2>/dev/null || echo "ERROR")
+# Affichage sans le mot de passe
+SAFE_PROXY_USER="***"
+if [ -z "$USER" ]; then
+    SAFE_PROXY_USER="(sans auth)"
+fi
+echo "[*] Exécution : curl ${CURL_ARGS[*]} (user: $SAFE_PROXY_USER)"
+
+RESULT=$(curl "${CURL_ARGS[@]}" 2>/dev/null || echo "ERROR")
 
 if [ "$RESULT" = "ERROR" ] || [ -z "$RESULT" ]; then
-  echo "[-] Échec du test direct via le port hôte $PROXY_PORT."
+  echo "[-] Échec du test direct via le port $PROXY_PORT."
   echo "[*] Tentative de diagnostic interne depuis le conteneur gateway-isp :"
   docker exec gateway-isp curl -s --max-time 8 https://ipinfo.io/json || exit 1
   exit 0

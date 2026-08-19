@@ -1,19 +1,27 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$DIR"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$DIR/lib.sh"
+
+cd "$PROJECT_ROOT"
 
 echo "========================================================"
 echo " Rotation d'Adresse IP (Passerelle ISP)"
 echo "========================================================"
 
-# Si un proxy avec rotation de session (ex: FlameProxies) est configuré
-if grep -q "session-" .env 2>/dev/null; then
+load_env
+PROXY_USER=$(get_env ISP_PROXY_USER)
+
+# Rotation de session : uniquement pour les proxys résidentiels à session
+# (type FlameProxies "session-..."). Pour un proxy classique HOST:PORT:USER:PASS,
+# il n'y a pas de session à faire tourner — on se contente de redémarrer la
+# passerelle pour renouveler la connexion TCP.
+if [[ "$PROXY_USER" == *"session-"* ]]; then
     NEW_SESSION="fresh$(head -c 4 /dev/urandom | od -An -tu2 | tr -d ' ')"
     echo "[*] Détection d'un fournisseur avec rotation de session."
     echo "[*] Génération de la nouvelle session : $NEW_SESSION"
-    
+
     python3 -c "
 from pathlib import Path
 import re
@@ -25,8 +33,8 @@ if env_file.exists():
 "
     ./scripts/switch_isp_proxy.sh
 else
-    echo "[*] Redémarrage de la passerelle pour renouveler la connexion..."
-    docker compose -p "proxy_docker" restart gateway-isp
+    echo "[*] Proxy classique (sans session résidentielle) : redémarrage du tunnel uniquement."
+    docker compose -p "$PROJECT_NAME" restart gateway-isp
 fi
 
 echo ""
