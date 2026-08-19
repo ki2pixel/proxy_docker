@@ -140,9 +140,8 @@ rotate_session() {
         echo "========================================================"
         
         # Arrêter l'instance courante de tun2socks
-        if [ -n "$TUN2SOCKS_PID" ] && kill -0 "$TUN2SOCKS_PID" 2>/dev/null; then
-            kill -TERM "$TUN2SOCKS_PID" 2>/dev/null || true
-            wait "$TUN2SOCKS_PID" 2>/dev/null || true
+        if [ -n "$TUN2SOCKS_PID" ]; then
+            kill -9 "$TUN2SOCKS_PID" 2>/dev/null || true
         fi
         sleep 1
         start_tun2socks
@@ -151,14 +150,15 @@ rotate_session() {
         /usr/local/bin/healthcheck.sh || true
     else
         echo "[!] [Watchdog] Déconnexion détectée, redémarrage du tunnel..."
-        if [ -n "$TUN2SOCKS_PID" ] && kill -0 "$TUN2SOCKS_PID" 2>/dev/null; then
-            kill -TERM "$TUN2SOCKS_PID" 2>/dev/null || true
-            wait "$TUN2SOCKS_PID" 2>/dev/null || true
+        if [ -n "$TUN2SOCKS_PID" ]; then
+            kill -9 "$TUN2SOCKS_PID" 2>/dev/null || true
         fi
         sleep 1
         start_tun2socks
     fi
 }
+
+set +e
 
 cleanup() {
     echo "[*] Stopping gateway services..."
