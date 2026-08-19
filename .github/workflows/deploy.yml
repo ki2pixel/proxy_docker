@@ -1,25 +1,26 @@
-name: CD - Deploy to VPS (DigitalOcean / Vultr)
+name: CD - Deploy to Microsoft Azure VPS
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   deploy:
-    name: Deploy to Cloud VPS
+    name: Deploy to Azure VM
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Deploy via SSH
+      - name: Deploy via SSH to Azure
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.DROPLET_HOST || secrets.VULTR_HOST_IP || secrets.SERVER_HOST_IP }}
-          username: 'root'
-          key: ${{ secrets.DROPLET_SSH_PRIVATE_KEY || secrets.VULTR_SSH_PRIVATE_KEY || secrets.SSH_PRIVATE_KEY }}
+          host: ${{ secrets.AZURE_HOST_IP || secrets.SERVER_HOST_IP || secrets.DROPLET_HOST }}
+          username: ${{ secrets.AZURE_USERNAME || 'azureuser' }}
+          key: ${{ secrets.AZURE_SSH_KEY || secrets.SSH_PRIVATE_KEY || secrets.DROPLET_SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
           script: |
             set -e
@@ -43,4 +44,4 @@ jobs:
             echo "🧹 [Deploy] Nettoyage des images orphelines..."
             docker image prune -f
             
-            echo "✅ [Deploy] Déploiement terminé avec succès !"
+            echo "✅ [Deploy] Déploiement Azure terminé avec succès !"
