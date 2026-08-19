@@ -216,7 +216,7 @@ Tableau de bord Web : **[http://localhost:8088](http://localhost:8088)** — con
 Le fichier [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) déploie automatiquement chaque mise à jour sur votre VM Azure lors d'un `git push origin main` :
 1. Validation de `docker compose config` (locale + sur la VM).
 2. `git pull` sur la VM, puis `docker compose up -d --build --remove-orphans` (sans down destructeur).
-3. Attente du healthcheck de `gateway-isp` (max 90s) avant de déclarer le succès.
+3. Attente du healthcheck du dashboard (max 90s) avant de déclarer le succès ; la santé du gateway est signalée sans bloquer (elle dépend du proxy amont, pas du code).
 4. Nettoyage des images de plus de 72h uniquement.
 
 Le pipeline [`.github/workflows/security.yml`](.github/workflows/security.yml) scanne chaque push/PR : **gitleaks** (secrets), **shellcheck** (scripts bash) et **npm audit + tests** (controller).
