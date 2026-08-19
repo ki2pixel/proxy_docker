@@ -1,4 +1,4 @@
-name: CD - Deploy to Vultr
+name: CD - Deploy to VPS (DigitalOcean / Vultr)
 
 on:
   push:
@@ -7,27 +7,27 @@ on:
 
 jobs:
   deploy:
-    name: Deploy to Vultr VPS
+    name: Deploy to Cloud VPS
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Deploy via SSH to Vultr
+      - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.VULTR_HOST_IP }}
+          host: ${{ secrets.DROPLET_HOST || secrets.VULTR_HOST_IP || secrets.SERVER_HOST_IP }}
           username: 'root'
-          key: ${{ secrets.VULTR_SSH_PRIVATE_KEY }}
-          port: ${{ secrets.VULTR_SSH_PORT || 22 }}
+          key: ${{ secrets.DROPLET_SSH_PRIVATE_KEY || secrets.VULTR_SSH_PRIVATE_KEY || secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
           script: |
             set -e
             APP_DIR="/opt/proxy_docker"
             echo "🚀 [Deploy] Accès au dossier $APP_DIR..."
             
             if [ ! -d "$APP_DIR" ]; then
-              echo "[-] Dossier $APP_DIR introuvable sur le serveur Vultr."
+              echo "[-] Dossier $APP_DIR introuvable sur le serveur."
               exit 1
             fi
             
@@ -43,4 +43,4 @@ jobs:
             echo "🧹 [Deploy] Nettoyage des images orphelines..."
             docker image prune -f
             
-            echo "✅ [Deploy] Déploiement Vultr terminé avec succès !"
+            echo "✅ [Deploy] Déploiement terminé avec succès !"
