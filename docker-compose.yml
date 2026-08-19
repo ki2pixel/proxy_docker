@@ -29,8 +29,11 @@ services:
       - ./docker-compose.yml:/workspace/docker-compose.yml:ro
       - ./.env:/workspace/.env
     depends_on:
+      # Le dashboard doit être accessible même si le tunnel est down :
+      # c'est l'outil de supervision ET de reconfiguration du proxy.
+      # Seuls les providers attendent le tunnel sain (service_healthy).
       gateway-isp:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
       interval: 30s
