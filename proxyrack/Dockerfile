@@ -15,9 +15,7 @@ RUN apt-get update && \
         curl \
         wget \
         netcat-traditional \
-        procps \
-        nodejs \
-        npm && \
+        procps && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 20 LTS (via nodesource, épinglé)
