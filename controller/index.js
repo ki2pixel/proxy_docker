@@ -327,9 +327,34 @@ app.post('/api/providers/:id/:action', async (req, res) => {
       }
     }
 
-    res.json({ success: true, message: `${provider.name} ${action}ed successfully.` });
+// 2b. Proxy IP Rotation Trigger
+app.post('/api/proxy/rotate', async (req, res) => {
+  try {
+    log('Manual IP rotation triggered from Web Dashboard...', 'INFO');
+    const newSession = `live${Math.random().toString(36).substring(2, 8)}`;
+    
+    if (fs.existsSync(ENV_PATH)) {
+      let content = fs.readFileSync(ENV_PATH, 'utf-8');
+      content = content.replace(/session-[a-zA-Z0-9_-]+/g, `session-${newSession}`);
+      fs.writeFileSync(ENV_PATH, content, 'utf-8');
+    }
+
+    const composeFile = fs.existsSync(path.join(APP_DIR, 'docker-compose.yml'))
+      ? path.join(APP_DIR, 'docker-compose.yml')
+      : path.join(APP_DIR, 'docker-compose.isp.yml');
+
+    await execAsync(`docker compose -p "${PROJECT_NAME}" -f "${composeFile}" restart gateway-isp`);
+    await new Promise(r => setTimeout(r, 3000));
+    await fetchCurrentGatewayIP();
+
+    res.json({
+      success: true,
+      message: `IP tournée avec succès : ${state.currentIP}`,
+      ip: state.currentIP,
+      location: state.currentLocation
+    });
   } catch (err) {
-    log(`Provider action error: ${err.message}`, 'ERROR');
+    log(`Rotation error: ${err.message}`, 'ERROR');
     res.status(500).json({ error: err.message });
   }
 });

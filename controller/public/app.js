@@ -176,6 +176,26 @@ if (quickRefreshBtn) {
   });
 }
 
+// Rotate IP button
+const rotateIpBtn = document.getElementById('btn-rotate-ip');
+if (rotateIpBtn) {
+  rotateIpBtn.addEventListener('click', async () => {
+    showToast('Rotation de l\'adresse IP en cours...', 'info');
+    try {
+      const res = await fetch('/api/proxy/rotate', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message || `Nouvelle IP : ${data.ip}`, 'success');
+        setTimeout(fetchStatus, 1500);
+      } else {
+        showToast(data.error || 'Erreur lors de la rotation', 'error');
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
+}
+
 // Copy IP button
 document.getElementById('btn-copy-ip').addEventListener('click', () => {
   const ip = heroIpEl.innerText;
