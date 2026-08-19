@@ -327,6 +327,13 @@ app.post('/api/providers/:id/:action', async (req, res) => {
       }
     }
 
+    res.json({ success: true, message: `${provider.name} ${action}ed successfully.` });
+  } catch (err) {
+    log(`Provider action error: ${err.message}`, 'ERROR');
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 2b. Proxy IP Rotation Trigger
 app.post('/api/proxy/rotate', async (req, res) => {
   try {
