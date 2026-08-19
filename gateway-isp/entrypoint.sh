@@ -175,6 +175,15 @@ trap cleanup SIGINT SIGTERM
 # Démarrage initial de tun2socks
 start_tun2socks
 
+# Vérification immédiate au démarrage et rotation si la session initiale est expirée
+sleep 2
+if ! curl -s --max-time 3 http://ip-api.com/json >/dev/null 2>&1 && ! curl -s -k --max-time 3 https://ipinfo.io/json >/dev/null 2>&1; then
+    if [[ "$USER" == *"session-"* ]]; then
+        echo "[!] [Démarrage] Session initiale expirée ou inaccessible. Auto-rotation immédiate..."
+        rotate_session "démarrage initial"
+    fi
+fi
+
 # 6. Boucle de Surveillance Active (Watchdog)
 echo "========================================================"
 echo "🛡️ Watchdog de Surveillance & Auto-Guérison Activé"
@@ -210,8 +219,9 @@ while true; do
 
     # 2. Test de connectivité actif (Failover)
     if [ "$AUTO_ROTATE" = "true" ]; then
-        if curl -s -k --max-time 4 https://1.1.1.1/cdn-cgi/trace >/dev/null 2>&1 || \
-           curl -s --max-time 4 http://ip-api.com/json >/dev/null 2>&1; then
+        if curl -s --max-time 4 http://ip-api.com/json >/dev/null 2>&1 || \
+           curl -s -k --max-time 4 https://ipinfo.io/json >/dev/null 2>&1 || \
+           curl -s -k --max-time 4 https://ifconfig.co/json >/dev/null 2>&1; then
             FAIL_COUNT=0
         else
             FAIL_COUNT=$((FAIL_COUNT + 1))
