@@ -17,7 +17,7 @@ test('redactSecrets masque les valeurs de clés secrètes', () => {
     'ISP_PROXY_PASS="***"'
   );
   assert.equal(
-    redactSecrets('API_KEY="H3DS1K7IV8PGNZR"'),
+    redactSecrets('API_KEY="abcdef0123456789"'),
     'API_KEY="***"'
   );
 });

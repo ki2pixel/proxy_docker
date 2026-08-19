@@ -16,7 +16,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate compose file
-        run: docker compose config --quiet
+        run: |
+          # Le runner n'a pas le .env : fournir des valeurs de validation
+          # (le déploiement réel sur la VM utilisera le vrai .env)
+          DASHBOARD_TOKEN=validation_token_32chars_minimum DASHBOARD_SECRET=validation_secret_32chars_minimum \
+          docker compose config --quiet
 
       - name: Deploy via SSH to Azure
         uses: appleboy/ssh-action@v1.0.3
