@@ -129,7 +129,7 @@ export const CONFIG_KEYS = [
   { key: 'GATEWAY_LOGLEVEL', category: 'gateway', label: 'Niveau de log gateway', options: ['warning', 'info', 'debug'] },
   // Dashboard
   { key: 'DASHBOARD_PORT', category: 'dashboard', label: 'Port du dashboard' },
-  { key: 'COMPOSE_PROFILES', category: 'dashboard', label: 'Profils actifs', options: ['repocket', 'honeygain', 'packetstream', 'pawns', 'proxyrack', 'all'] },
+  { key: 'COMPOSE_PROFILES', category: 'dashboard', label: 'Profils actifs', options: ['none', 'repocket', 'honeygain', 'packetstream', 'pawns', 'proxyrack', 'all'] },
   // Fournisseurs
   { key: 'API_KEY', category: 'providers', label: 'Proxyrack — clé API' },
   { key: 'UUID', category: 'providers', label: 'Proxyrack — UUID' },

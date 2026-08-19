@@ -14,6 +14,7 @@ TARGET="$1"
 
 if [ -z "$TARGET" ]; then
   echo "Sélectionnez le fournisseur de monétisation à activer :"
+  echo "  0) Aucun (none) — seulement la passerelle + dashboard"
   echo "  1) Proxyrack PoP (proxyrack)"
   echo "  2) Honeygain (honeygain)"
   echo "  3) PacketStream (packetstream)"
@@ -21,10 +22,11 @@ if [ -z "$TARGET" ]; then
   echo "  5) Repocket (repocket)"
   echo "  6) Tous les fournisseurs simultanément (all)"
   echo ""
-  read -r -p "Votre choix (1-6) [1] : " CHOICE
+  read -r -p "Votre choix (0-6) [1] : " CHOICE
   CHOICE="${CHOICE:-1}"
 
   case "$CHOICE" in
+    0) TARGET="none" ;;
     1) TARGET="proxyrack" ;;
     2) TARGET="honeygain" ;;
     3) TARGET="packetstream" ;;
@@ -37,6 +39,7 @@ fi
 
 # Normalize target name
 case "$TARGET" in
+  none|off|stop|aucun) TARGET="none" ;;
   proxyrack|pr) TARGET="proxyrack" ;;
   honeygain|hg) TARGET="honeygain" ;;
   packetstream|ps|packet) TARGET="packetstream" ;;
@@ -45,7 +48,7 @@ case "$TARGET" in
   all) TARGET="all" ;;
   *)
     echo "[-] Erreur : Fournisseur '$TARGET' inconnu."
-    echo "    Options valides : proxyrack | honeygain | packetstream | pawns | repocket | all"
+    echo "    Options valides : none | proxyrack | honeygain | packetstream | pawns | repocket | all"
     exit 1
     ;;
 esac
@@ -66,6 +69,7 @@ if [ "$TARGET" != "all" ]; then
   ALL_CONTAINERS=("proxyrack-pop" "honeygain" "packetstream" "pawns" "repocket")
   for C in "${ALL_CONTAINERS[@]}"; do
     case "$TARGET" in
+      none) : ;; # aucun provider gardé : on arrête tout
       proxyrack) [ "$C" == "proxyrack-pop" ] && continue ;;
       honeygain) [ "$C" == "honeygain" ] && continue ;;
       packetstream) [ "$C" == "packetstream" ] && continue ;;
@@ -83,7 +87,12 @@ fi
 COMPOSE_PROFILES="$TARGET" docker compose -p "$PROJECT_NAME" up -d
 
 echo ""
-echo "[✓] Fournisseur actif configuré sur : $TARGET !"
-echo "[*] Le trafic de ce fournisseur est acheminé via la Passerelle ISP Dédiée."
+if [ "$TARGET" = "none" ]; then
+  echo "[✓] Aucun fournisseur actif : seuls la passerelle et le dashboard tournent."
+  echo "[*] Aucun trafic de monétisation — parfait en attendant un proxy stable."
+else
+  echo "[✓] Fournisseur actif configuré sur : $TARGET !"
+  echo "[*] Le trafic de ce fournisseur est acheminé via la Passerelle ISP Dédiée."
+fi
 echo "[*] Vérifiez le statut avec : ./scripts/status.sh"
 echo "========================================================"

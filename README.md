@@ -148,7 +148,8 @@ DASHBOARD_PORT=8088
 DASHBOARD_TOKEN="votre_token_connexion_dashboard"
 DASHBOARD_SECRET="votre_secret_hmac_session"
 
-# Fournisseurs actifs : proxyrack | honeygain | packetstream | pawns | repocket | all
+# Fournisseurs actifs : none | proxyrack | honeygain | packetstream | pawns | repocket | all
+# "none" = aucun provider (seuls la passerelle et le dashboard tournent)
 COMPOSE_PROFILES="all"
 
 # --- Passerelle ISP / Residential Dédiée ---
@@ -205,7 +206,7 @@ Tableau de bord Web : **[http://localhost:8088](http://localhost:8088)** — con
 | [`scripts/rotate_env.sh`](scripts/rotate_env.sh) | **Rotation de tous les secrets** du `.env` (génère de nouvelles valeurs + guide). |
 | [`scripts/status.sh`](scripts/status.sh) | Affiche l'état complet des conteneurs, le statut de la passerelle et la géolocalisation de l'IP. |
 | [`scripts/switch_isp_proxy.sh`](scripts/switch_isp_proxy.sh) | Bascule à chaud le proxy amont : `./scripts/switch_isp_proxy.sh <HOST:PORT[:USER:PASS]> [socks5|http]`. |
-| [`scripts/switch_provider.sh`](scripts/switch_provider.sh) | Bascule le fournisseur de monétisation actif. |
+| [`scripts/switch_provider.sh`](scripts/switch_provider.sh) | Bascule le fournisseur de monétisation actif (`none` = aucun provider, passerelle + dashboard seuls). |
 | [`scripts/test_proxy.sh`](scripts/test_proxy.sh) | Teste la connectivité du proxy amont (via le conteneur gateway-isp par défaut). |
 | [`scripts/benchmark.sh`](scripts/benchmark.sh) | Lance un benchmark en temps réel mesurant la RAM, le CPU et les PIDs de la stack. |
 
