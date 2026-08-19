@@ -49,6 +49,28 @@ const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '10kb' }));
 app.use(cookieParser());
+
+// Security headers — appliqués AVANT express.static pour couvrir aussi les fichiers statiques
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; " +
+    "script-src 'self'; " +
+    "style-src 'self' https://fonts.googleapis.com; " +
+    "font-src https://fonts.gstatic.com; " +
+    "connect-src 'self'; " +
+    "img-src 'self' data:; " +
+    "base-uri 'none'; " +
+    "form-action 'self'; " +
+    "frame-ancestors 'none'; " +
+    "object-src 'none'"
+  );
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // -----------------------------------------------------------------------------
@@ -122,13 +144,6 @@ function requireCsrf(req, res, next) {
   }
   next();
 }
-
-app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('X-Frame-Options', 'DENY');
-  next();
-});
 
 // -----------------------------------------------------------------------------
 // Global In-Memory State & Cache

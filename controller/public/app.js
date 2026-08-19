@@ -16,6 +16,7 @@ const state = {
   status: null,
   activeLogTarget: 'system',
   eventSource: null,
+  logPollTimer: null,
   authenticated: false
 };
 
@@ -27,6 +28,10 @@ const heroCityEl = document.getElementById('hero-city');
 const heroIspEl = document.getElementById('hero-isp');
 const heroProxyTargetEl = document.getElementById('hero-proxy-target');
 const latencyValueEl = document.getElementById('latency-value');
+
+const gatewayBadgeEl = document.getElementById('gateway-badge');
+const gatewayBadgeTextEl = gatewayBadgeEl ? gatewayBadgeEl.querySelector('span:last-child') : null;
+const dnsBadgeTextEl = document.getElementById('dns-badge')?.querySelector('span:last-child');
 
 const statGatewayStatusEl = document.getElementById('stat-gateway-status');
 const statLatencyEl = document.getElementById('stat-latency');
@@ -63,6 +68,10 @@ function showLogin() {
   if (state.eventSource) {
     state.eventSource.close();
     state.eventSource = null;
+  }
+  if (state.logPollTimer) {
+    clearInterval(state.logPollTimer);
+    state.logPollTimer = null;
   }
   document.getElementById('login-overlay').classList.remove('hidden');
 }
@@ -177,10 +186,11 @@ function renderStatus(data) {
       statProtocolEl.innerText = `${(data.activeProxy.protocol || 'SOCKS5').toUpperCase()} :${data.activeProxy.port || '1080'}`;
     }
   }
-  if (data.latencyMs) {
+  if (typeof data.latencyMs === 'number') {
     const latText = `${data.latencyMs} ms`;
     latencyValueEl.innerText = latText;
-    latencyValueEl.style.color = data.latencyMs < 350 ? '#34d399' : (data.latencyMs < 600 ? '#fbbf24' : '#fb7185');
+    latencyValueEl.classList.remove('lat-ok', 'lat-mid', 'lat-slow');
+    latencyValueEl.classList.add(data.latencyMs < 350 ? 'lat-ok' : (data.latencyMs < 600 ? 'lat-mid' : 'lat-slow'));
     if (statLatencyEl) {
       statLatencyEl.innerText = latText;
     }
@@ -191,6 +201,19 @@ function renderStatus(data) {
     const isHealthy = data.gatewayStatus === 'HEALTHY';
     statGatewayStatusEl.innerText = isHealthy ? 'Active' : (data.gatewayStatus || 'En attente');
     statGatewayStatusEl.className = isHealthy ? 'stat-number text-emerald' : 'stat-number text-amber';
+  }
+
+  // Header badges (gateway + DoH)
+  if (gatewayBadgeEl && gatewayBadgeTextEl) {
+    const isHealthy = data.gatewayStatus === 'HEALTHY';
+    gatewayBadgeEl.classList.toggle('status-healthy', isHealthy);
+    gatewayBadgeEl.classList.toggle('status-warning', !isHealthy);
+    gatewayBadgeTextEl.innerText = isHealthy
+      ? 'Passerelle ISP : Active'
+      : (data.gatewayStatus === 'UNKNOWN' ? 'Passerelle ISP : En attente' : 'Passerelle ISP : Hors ligne');
+  }
+  if (dnsBadgeTextEl) {
+    dnsBadgeTextEl.innerText = data.gatewayStatus === 'HEALTHY' ? 'DoH DNS : Cloudflare' : 'DoH DNS : Inactif';
   }
 
   // Monetization nodes
@@ -208,36 +231,81 @@ function renderStatus(data) {
 // -----------------------------------------------------------------------------
 function renderNodes(providers) {
   nodesGridEl.innerHTML = '';
+  if (!providers.length) {
+    const empty = document.createElement('div');
+    empty.className = 'nodes-empty';
+    empty.textContent = 'Aucun nœud configuré.';
+    nodesGridEl.appendChild(empty);
+    return;
+  }
   providers.forEach(p => {
     const card = document.createElement('div');
     card.className = 'node-card glass-card';
 
-    const isRunning = p.running;
-    const statusClass = isRunning ? 'running' : 'stopped';
-    const statusLabel = isRunning ? 'Actif & Routé' : 'Arrêté';
+    const head = document.createElement('div');
+    head.className = 'node-head';
 
-    card.innerHTML = `
-      <div class="node-head">
-        <div class="node-title-box">
-          <span class="node-icon">${p.icon}</span>
-          <span class="node-name">${p.name}</span>
-        </div>
-        <span class="node-status-badge ${statusClass}">${statusLabel}</span>
-      </div>
-      <div class="node-info">
-        <div>Conteneur : <code>${p.container}</code></div>
-        <div>Réseau : <code>service:gateway-isp</code></div>
-      </div>
-      <div class="node-actions">
-        ${isRunning ? `
-          <button class="btn btn-secondary btn-sm" onclick="nodeAction('${p.id}', 'restart')">Redémarrer</button>
-          <button class="btn btn-secondary btn-sm" onclick="nodeAction('${p.id}', 'stop')">Arrêter</button>
-        ` : `
-          <button class="btn btn-primary btn-sm" onclick="nodeAction('${p.id}', 'start')">Démarrer</button>
-        `}
-        <a href="${p.dashboard}" target="_blank" class="btn btn-secondary btn-sm" title="Ouvrir le tableau de bord">Dashboard ↗</a>
-      </div>
-    `;
+    const titleBox = document.createElement('div');
+    titleBox.className = 'node-title-box';
+
+    const icon = document.createElement('span');
+    icon.className = 'node-icon';
+    icon.textContent = p.icon || '📦';
+    titleBox.appendChild(icon);
+
+    const name = document.createElement('span');
+    name.className = 'node-name';
+    name.textContent = p.name || p.id;
+    titleBox.appendChild(name);
+    head.appendChild(titleBox);
+
+    const isRunning = p.running;
+    const statusBadge = document.createElement('span');
+    statusBadge.className = `node-status-badge ${isRunning ? 'running' : 'stopped'}`;
+    statusBadge.textContent = isRunning ? 'Actif & Routé' : 'Arrêté';
+    head.appendChild(statusBadge);
+    card.appendChild(head);
+
+    const info = document.createElement('div');
+    info.className = 'node-info';
+
+    const containerLine = document.createElement('div');
+    const containerCode = document.createElement('code');
+    containerCode.textContent = p.container;
+    containerLine.append('Conteneur : ', containerCode);
+    info.appendChild(containerLine);
+
+    const networkLine = document.createElement('div');
+    const networkCode = document.createElement('code');
+    networkCode.textContent = 'service:gateway-isp';
+    networkLine.append('Réseau : ', networkCode);
+    info.appendChild(networkLine);
+    card.appendChild(info);
+
+    const actions = document.createElement('div');
+    actions.className = 'node-actions';
+
+    const actionButtons = isRunning
+      ? [['restart', 'Redémarrer', 'btn-secondary'], ['stop', 'Arrêter', 'btn-secondary']]
+      : [['start', 'Démarrer', 'btn-primary']];
+    for (const [action, label, variant] of actionButtons) {
+      const btn = document.createElement('button');
+      btn.className = `btn ${variant} btn-sm`;
+      btn.textContent = label;
+      btn.addEventListener('click', () => nodeAction(p.id, action));
+      actions.appendChild(btn);
+    }
+
+    const dashboardLink = document.createElement('a');
+    dashboardLink.href = p.dashboard;
+    dashboardLink.target = '_blank';
+    dashboardLink.rel = 'noopener noreferrer';
+    dashboardLink.className = 'btn btn-secondary btn-sm';
+    dashboardLink.title = 'Ouvrir le tableau de bord';
+    dashboardLink.textContent = 'Dashboard ↗';
+    actions.appendChild(dashboardLink);
+    card.appendChild(actions);
+
     nodesGridEl.appendChild(card);
   });
 }
@@ -261,49 +329,94 @@ window.nodeAction = async function(id, action) {
 // -----------------------------------------------------------------------------
 // 3. Quick Actions & Helpers
 // -----------------------------------------------------------------------------
+async function withBusy(button, fn) {
+  button.disabled = true;
+  try {
+    await fn();
+  } finally {
+    button.disabled = false;
+  }
+}
+
 const quickRefreshBtn = document.getElementById('btn-quick-refresh');
 if (quickRefreshBtn) {
-  quickRefreshBtn.addEventListener('click', async () => {
-    showToast('Rafraîchissement des métriques et de la passerelle...', 'info');
-    await fetchStatus();
-    showToast('Métriques mises à jour avec succès !', 'success');
+  quickRefreshBtn.addEventListener('click', () => {
+    withBusy(quickRefreshBtn, async () => {
+      showToast('Rafraîchissement des métriques et de la passerelle...', 'info');
+      await fetchStatus();
+      showToast('Métriques mises à jour avec succès !', 'success');
+    });
   });
 }
 
 // Rotate IP button
 const rotateIpBtn = document.getElementById('btn-rotate-ip');
 if (rotateIpBtn) {
-  rotateIpBtn.addEventListener('click', async () => {
-    showToast('Rotation de l\'adresse IP en cours...', 'info');
-    try {
-      const res = await apiFetch('/api/proxy/rotate', { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        showToast(data.message || `Nouvelle IP : ${data.ip}`, 'success');
-        setTimeout(fetchStatus, 1500);
-      } else {
-        showToast(data.error || 'Erreur lors de la rotation', 'error');
+  rotateIpBtn.addEventListener('click', () => {
+    withBusy(rotateIpBtn, async () => {
+      showToast('Rotation de l\'adresse IP en cours...', 'info');
+      try {
+        const res = await apiFetch('/api/proxy/rotate', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          showToast(data.message || `Nouvelle IP : ${data.ip}`, 'success');
+          setTimeout(fetchStatus, 1500);
+        } else {
+          showToast(data.error || 'Erreur lors de la rotation', 'error');
+        }
+      } catch (err) {
+        if (err.message !== 'Session expirée') showToast(err.message, 'error');
       }
-    } catch (err) {
-      if (err.message !== 'Session expirée') showToast(err.message, 'error');
-    }
+    });
   });
 }
 
 // Copy IP button
-document.getElementById('btn-copy-ip').addEventListener('click', () => {
+function copyToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text);
+  }
+  // Fallback pour les contextes non-sécurisés (HTTP localhost, tunnel SSH)
+  return new Promise((resolve, reject) => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      resolve();
+    } catch (err) {
+      reject(err);
+    } finally {
+      ta.remove();
+    }
+  });
+}
+
+document.getElementById('btn-copy-ip').addEventListener('click', async () => {
   const ip = heroIpEl.innerText;
   if (ip && !ip.includes('...')) {
-    navigator.clipboard.writeText(ip);
-    showToast(`Adresse IP ${ip} copiée dans le presse-papier !`);
+    try {
+      await copyToClipboard(ip);
+      showToast(`Adresse IP ${ip} copiée dans le presse-papier !`);
+    } catch {
+      showToast('Impossible de copier l\'adresse IP', 'error');
+    }
   }
 });
 
 // Refresh header button
-document.getElementById('btn-refresh-status').addEventListener('click', () => {
-  fetchStatus();
-  showToast('Métriques rafraîchies', 'info');
-});
+const refreshStatusBtn = document.getElementById('btn-refresh-status');
+if (refreshStatusBtn) {
+  refreshStatusBtn.addEventListener('click', () => {
+    withBusy(refreshStatusBtn, async () => {
+      await fetchStatus();
+      showToast('Métriques rafraîchies', 'info');
+    });
+  });
+}
 
 // Restart all nodes button
 document.getElementById('btn-restart-all-nodes').addEventListener('click', async () => {
@@ -497,11 +610,12 @@ function setupLogsSSE() {
 }
 
 function appendLogLine(line) {
+  const nearBottom = terminalBodyEl.scrollHeight - terminalBodyEl.scrollTop - terminalBodyEl.clientHeight < 60;
   const lineEl = document.createElement('div');
   lineEl.className = 'log-line';
   lineEl.innerText = line;
   terminalBodyEl.appendChild(lineEl);
-  terminalBodyEl.scrollTop = terminalBodyEl.scrollHeight;
+  if (nearBottom) terminalBodyEl.scrollTop = terminalBodyEl.scrollHeight;
 }
 
 async function fetchContainerLogs(name) {
@@ -520,6 +634,8 @@ async function fetchContainerLogs(name) {
 }
 
 // Log tabs
+const CONTAINER_LOG_POLL_MS = 5000;
+
 document.getElementById('log-tabs').addEventListener('click', (e) => {
   if (e.target.tagName === 'BUTTON') {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -528,10 +644,16 @@ document.getElementById('log-tabs').addEventListener('click', (e) => {
     state.activeLogTarget = target;
     terminalTitleEl.innerText = `Flux : ${e.target.innerText}`;
 
+    if (state.logPollTimer) {
+      clearInterval(state.logPollTimer);
+      state.logPollTimer = null;
+    }
+
     if (target === 'system') {
       terminalBodyEl.innerHTML = '<div class="log-line">[SYSTEM] Écoute du flux des logs système...</div>';
     } else {
       fetchContainerLogs(target);
+      state.logPollTimer = setInterval(() => fetchContainerLogs(target), CONTAINER_LOG_POLL_MS);
     }
   }
 });
@@ -551,19 +673,21 @@ async function initAuthenticated() {
 }
 
 async function init() {
-  // Démarrage : vérifie si une session existe déjà (cookie valide)
-  try {
-    const res = await apiFetch('/api/status');
-    if (res.ok) {
-      await initAuthenticated();
-    } else {
-      showLogin();
-    }
-  } catch {
-    showLogin();
+  // Démarrage : vérifie si une session existe déjà.
+  // Le cookie csrf (non-httpOnly) est posé en même temps que la session :
+  // s'il est absent, on affiche le login sans requête (évite un 401 volontaire
+  // et son log d'erreur dans la console).
+  if (getCookie('csrf')) {
+    try {
+      const res = await apiFetch('/api/status');
+      if (res.ok) {
+        await initAuthenticated();
+        setInterval(fetchStatus, 10000);
+        return;
+      }
+    } catch { /* session invalide → login */ }
   }
-
-  // Periodic polling every 10 seconds
+  showLogin();
   setInterval(fetchStatus, 10000);
 }
 

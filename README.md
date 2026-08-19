@@ -31,7 +31,7 @@ graph TD
         end
 
         subgraph DashboardContainer ["Conteneur : isp-dashboard"]
-            DASH["Superviseur Express.js & SSE (Port :8088)<br>• Docker Engine Socket (/var/run/docker.sock)<br>• Métriques & Géolocalisation en direct<br>• Éditeur de configuration (.env)<br>• Bouton 1-Clic de Rotation d'IP"]
+            DASH["Superviseur Express.js & SSE (Port :8088)<br>• Docker Engine Socket (/var/run/docker.sock)<br>• Métriques & Géolocalisation en direct<br>• Éditeur de configuration (.env)<br>• Bouton 1-Clic de Rotation d'IP<br>• CSP stricte + badges d'état en direct"]
         end
 
         UPSTREAM["Proxy Résidentiel / Static ISP Amont<br>(FlameProxies, PrivateProxy, etc.)"]
@@ -58,8 +58,8 @@ graph TD
 * 🔄 **Watchdog d'Auto-Guérison (Self-Healing)** : Détecte les déconnexions de sessions résidentielles et génère automatiquement une nouvelle session active (failover en ~40s).
 * ⏰ **Rotation Préventive (50 min)** : Anticipe la limite des sessions temporaires de 60 minutes — déclenchée par le controller (dashboard), plus dans le gateway.
 * ⚡ **DNS-over-HTTPS (DoH)** : Prévention absolue des fuites DNS grâce au résolveur local `dnsproxy` routé via DoH Cloudflare / Google / Quad9.
-* 🔐 **Dashboard Authentifié** : accès protégé par token (`DASHBOARD_TOKEN`), sessions signées HMAC, CSRF, rate limiting — plus d'exposition publique par défaut (accès via tunnel SSH).
-* 📊 **Tableau de Bord & API en Temps Réel** : Suivi des métriques de connexion, logs en continu (SSE) et pilotage individuel des conteneurs via interface Web (port `8088`, localhost uniquement).
+* 🔐 **Dashboard Authentifié** : accès protégé par token (`DASHBOARD_TOKEN`), sessions signées HMAC, CSRF, rate limiting, **Content Security Policy stricte** (aucun script/ressource externe hors Google Fonts) — plus d'exposition publique par défaut (accès via tunnel SSH).
+* 📊 **Tableau de Bord & API en Temps Réel** : Suivi des métriques de connexion, logs système en continu (SSE), logs conteneurs auto-actualisés (polling 5s) et pilotage individuel des conteneurs via interface Web (port `8088`, localhost uniquement).
 
 ---
 
