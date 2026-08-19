@@ -52,6 +52,7 @@ services:
       - ALL
     cap_add:
       - NET_ADMIN
+      - NET_BIND_SERVICE # requis pour dnsproxy (port 53) et le binding des ports
     devices:
       - /dev/net/tun:/dev/net/tun
     environment:

@@ -1,0 +1,23 @@
+# Configuration gitleaks — proxy_docker
+# Documentation : https://github.com/gitleaks/gitleaks/blob/master/README.md
+
+title = "proxy_docker gitleaks config"
+
+[extend]
+# Utilise les règles par défaut de gitleaks en plus de celles ci-dessous
+useDefault = true
+
+# Les fichiers de test contiennent volontairement des chaînes ressemblant à
+# des secrets pour vérifier la redaction (redactSecrets). Elles sont toutes
+# préfixées par "test-key-" ou "test-pass-" et sont des valeurs factices.
+[allowlist]
+description = "Valeurs factices des tests unitaires"
+regexes = [
+  '''test-key-[A-Za-z0-9]+''',
+  '''test-pass-[A-Za-z0-9]+''',
+  '''monpass''',
+  '''valeur-secrete''',
+]
+paths = [
+  '''controller/test/.*''',
+]
