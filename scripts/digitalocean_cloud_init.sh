@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # Script d'Initialisation Cloud-Init (User Data) pour DigitalOcean Droplet
-# Distribution Optimisée Ultra-Légère : Debian 12 (Bookworm) x64
+# Compatible Debian 13 (Trixie), Debian 12 (Bookworm) et Ubuntu
 # ==============================================================================
 set -euo pipefail
 
 exec > >(tee -a /var/log/do-cloud-init.log) 2>&1
 echo "========================================================"
-echo "🚀 Initialisation DigitalOcean Droplet (Debian 12) - $(date)"
+echo "🚀 Initialisation DigitalOcean Droplet - $(date)"
 echo "========================================================"
 
 export DEBIAN_FRONTEND=noninteractive
 
-# 1. Mise à jour minimale de Debian 12
-echo "[1/6] Mise à jour des paquets Debian 12..."
+# 1. Mise à jour minimale de l'OS
+echo "[1/6] Mise à jour des paquets système..."
 apt-get update -y
 apt-get upgrade -y
 apt-get install -y ca-certificates curl gnupg lsb-release git iptables iproute2 ufw
 
-# 2. Création du Swap 1 Go sur SSD NVMe (Filet de sécurité RAM)
+# 2. Activation du Swap 1 Go sur SSD NVMe
 echo "[2/6] Activation de la mémoire d'échange Swap (1 Go)..."
 if [ ! -f /swapfile ]; then
     fallocate -l 1G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=1024
@@ -46,22 +46,14 @@ if [ ! -c /dev/net/tun ]; then
 fi
 echo "[✓] Module TUN opérationnel."
 
-# 4. Installation officielle de Docker Engine pour Debian 12
-echo "[4/6] Installation officielle de Docker CE pour Debian..."
+# 4. Installation Officielle de Docker Engine & Docker Compose (Script Universel)
+echo "[4/6] Installation officielle de Docker CE via get.docker.com..."
 if ! command -v docker &>/dev/null; then
-    install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
-    chmod a+r /etc/apt/keyrings/docker.asc
-
-    echo \
-      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
-      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-      tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-    apt-get update -y
-    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sh get-docker.sh
+    rm -f get-docker.sh
     systemctl enable --now docker
-    echo "[✓] Docker CE installé."
+    echo "[✓] Docker CE et Docker Compose installés avec succès."
 fi
 
 # 5. Déploiement du projet depuis GitHub
