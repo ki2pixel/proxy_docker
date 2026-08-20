@@ -2,15 +2,12 @@
 // ISP Gateway × Monetization Hub | Modern Dashboard Controller
 // =============================================================================
 
-const FLAGS = {
-  FR: '🇫🇷',
-  DE: '🇩🇪',
-  US: '🇺🇸',
-  SE: '🇸🇪',
-  FI: '🇫🇮',
-  GB: '🇬🇧',
-  CA: '🇨🇦'
-};
+function getFlagEmoji(countryCode) {
+  if (!countryCode || countryCode.length !== 2) return '🌐';
+  const code = countryCode.toUpperCase();
+  const codePoints = code.split('').map(char => 127397 + char.charCodeAt(0));
+  return String.fromCodePoint(...codePoints);
+}
 
 const state = {
   status: null,
@@ -170,20 +167,22 @@ function renderStatus(data) {
   // Hero IP Card
   if (data.ip) {
     heroIpEl.innerText = data.ip;
+  } else {
+    heroIpEl.innerText = data.gatewayStatus === 'HEALTHY' ? 'Détection...' : 'Indisponible';
   }
   if (data.location) {
-    const code = data.location.country || 'FR';
-    heroFlagEl.innerText = FLAGS[code] || '🌐';
-    heroCountryEl.innerText = data.location.country || 'France';
-    heroCityEl.innerText = data.location.city || 'Paris';
+    const code = data.location.country || '';
+    heroFlagEl.innerText = getFlagEmoji(code);
+    heroCountryEl.innerText = data.location.country || '--';
+    heroCityEl.innerText = data.location.city || '--';
   }
   if (data.isp) {
-    heroIspEl.innerText = data.isp.org || 'Limestone Networks';
+    heroIspEl.innerText = data.isp.org || '--';
   }
-  if (data.activeProxy) {
+  if (data.activeProxy && data.activeProxy.host) {
     heroProxyTargetEl.innerText = `Proxy : ${data.activeProxy.protocol}://${data.activeProxy.host}:${data.activeProxy.port}`;
     if (statProtocolEl) {
-      statProtocolEl.innerText = `${(data.activeProxy.protocol || 'SOCKS5').toUpperCase()} :${data.activeProxy.port || '1080'}`;
+      statProtocolEl.innerText = `${(data.activeProxy.protocol || 'SOCKS5').toUpperCase()} :${data.activeProxy.port || ''}`;
     }
   }
   if (typeof data.latencyMs === 'number') {

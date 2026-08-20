@@ -265,6 +265,58 @@ class DockerClient {
     return await this.request('POST', `/containers/${nameOrId}/stop?t=5`);
   }
 
+  async execInContainer(nameOrId, cmd) {
+    const execRes = await this.request('POST', `/containers/${nameOrId}/exec`, {
+      AttachStdout: true,
+      AttachStderr: true,
+      Cmd: cmd
+    });
+    if (!execRes || !execRes.Id) throw new Error('Failed to create exec instance');
+    return new Promise((resolve, reject) => {
+      const options = {
+        socketPath: this.socketPath,
+        path: `/exec/${execRes.Id}/start`,
+        method: 'POST',
+        headers: {
+          'Host': 'docker',
+          'Content-Type': 'application/json'
+        }
+      };
+      const req = http.request(options, (res) => {
+        const chunks = [];
+        res.on('data', chunk => chunks.push(chunk));
+        res.on('error', reject);
+        res.on('end', () => {
+          const raw = Buffer.concat(chunks);
+          let clean = '';
+          let offset = 0;
+          while (offset < raw.length) {
+            if (offset + 8 > raw.length) {
+              clean += raw.subarray(offset).toString('utf-8');
+              break;
+            }
+            const size = raw.readUInt32BE(offset + 4);
+            if (offset + 8 + size > raw.length) {
+              clean += raw.subarray(offset + 8).toString('utf-8');
+              break;
+            }
+            const content = raw.subarray(offset + 8, offset + 8 + size).toString('utf-8');
+            clean += content;
+            offset += 8 + size;
+          }
+          resolve(clean || raw.toString('utf-8'));
+        });
+      });
+      req.on('error', reject);
+      req.setTimeout(10000, () => {
+        req.destroy();
+        reject(new Error(`Docker exec timeout for ${nameOrId}`));
+      });
+      req.write(JSON.stringify({ Detach: false, Tty: false }));
+      req.end();
+    });
+  }
+
   async getContainerLogs(nameOrId, tail = 60) {
     return new Promise((resolve, reject) => {
       if (!this.isAvailable()) return reject(new Error('Socket not available'));
@@ -363,7 +415,7 @@ async function composeRestartGateway() {
 }
 
 // -----------------------------------------------------------------------------
-// Helper: Fetch Current IP through gateway-isp (via SOCKS bridge ou docker exec)
+// Helper: Fetch Current IP through gateway-isp (via docker exec ou socket API)
 // -----------------------------------------------------------------------------
 async function fetchCurrentGatewayIP() {
   if (state.ipFetchInFlight) return;
@@ -371,27 +423,39 @@ async function fetchCurrentGatewayIP() {
   try {
     const start = Date.now();
     let stdout = '';
+
+    // Relire le .env pour garder la cohérence du proxy affiché
+    const env = readEnvFile();
+    if (env.ISP_PROXY_HOST) {
+      state.activeProxy = {
+        host: env.ISP_PROXY_HOST,
+        port: env.ISP_PROXY_PORT || '',
+        protocol: env.ISP_PROXY_PROTOCOL || 'socks5'
+      };
+    }
+
+    // 1. Exécution curl dans gateway-isp via Docker CLI
     try {
-      const res = await execFileAsync('curl', [
-        '-s', '--max-time', '4', '--socks5', 'gateway-isp:23320',
+      const res = await execFileAsync('docker', [
+        'exec', 'gateway-isp', 'curl', '-s', '-k', '--max-time', '6',
         'https://ipinfo.io/json'
-      ], { timeout: 8000 });
+      ], { timeout: 10_000 });
       stdout = res.stdout;
     } catch {
+      // 2. Fallback via Docker Socket API (exec)
       try {
-        const res = await execFileAsync('docker', [
-          'exec', 'gateway-isp', 'curl', '-s', '-k', '--max-time', '4',
-          'https://ipinfo.io/json'
-        ], { timeout: 8000 });
-        stdout = res.stdout;
-      } catch (err) {
-        log(`Health check note: ${err.message}`, 'DEBUG');
+        stdout = await docker.execInContainer('gateway-isp', [
+          'curl', '-s', '-k', '--max-time', '6', 'https://ipinfo.io/json'
+        ]);
+      } catch (err2) {
+        log(`Health check note: ${err2.message}`, 'DEBUG');
       }
     }
 
     const latency = Date.now() - start;
     if (stdout && stdout.includes('{')) {
-      const data = JSON.parse(stdout);
+      const jsonStr = stdout.substring(stdout.indexOf('{'), stdout.lastIndexOf('}') + 1);
+      const data = JSON.parse(jsonStr);
       state.currentIP = data.ip || data.query;
       state.currentLocation = {
         city: data.city || 'Inconnu',

@@ -7,6 +7,7 @@ echo "=================================================="
 
 DATA_DIR="/app/data"
 mkdir -p "$DATA_DIR"
+chmod 777 "$DATA_DIR" 2>/dev/null || true
 UUID_FILE="$DATA_DIR/uuid.txt"
 API_CFG_FILE="$DATA_DIR/api.cfg"
 

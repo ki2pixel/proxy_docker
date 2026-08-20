@@ -2,18 +2,15 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# curl pour le healthcheck ; pas de docker-cli (l'orchestration passe par l'API socket)
-RUN apk add --no-cache curl wget
+# Outils réseau, docker-cli et docker-compose pour le pilotage de la stack
+RUN apk add --no-cache curl wget docker-cli docker-cli-compose
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
 COPY . .
 
-# Non-root
-RUN chown -R node:node /app
-USER node
-
 EXPOSE 8080
 
 CMD ["node", "index.js"]
+
