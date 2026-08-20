@@ -798,7 +798,8 @@ app.get('/api/logs/container/:name', requireAuth, async (req, res) => {
   tail = Math.min(Math.max(tail, 1), 2000);
   try {
     const containers = await docker.listContainers();
-    const matched = containers.find(c => (c.Names || []).some(n => n.includes(name)));
+    // Matching strict sur le nom de conteneur (préfixe / de Docker)
+    const matched = containers.find(c => (c.Names || []).includes(`/${name}`));
     if (!matched) return res.json({ logs: 'Container not currently running.' });
 
     const rawLogs = await docker.getContainerLogs(matched.Id, tail);

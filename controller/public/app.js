@@ -765,14 +765,24 @@ function appendLogLine(line) {
 async function fetchContainerLogs(name) {
   terminalBodyEl.innerHTML = `<div class="log-line">[LOGS] Récupération des logs du conteneur ${name}...</div>`;
   try {
-    const res = await apiFetch(`/api/logs/container/${name}?tail=80`);
+    const res = await apiFetch(`/api/logs/container/${encodeURIComponent(name)}?tail=80`);
     const data = await res.json();
+    if (!res.ok) {
+      terminalBodyEl.innerHTML = '';
+      appendLogLine(`[ERROR] ${data.error || 'Erreur inconnue'}`);
+      return;
+    }
     terminalBodyEl.innerHTML = '';
     const lines = (data.logs || '').split('\n');
+    if (!lines.some(l => l.trim())) {
+      appendLogLine(`[LOGS] Aucun log disponible pour ${name} (conteneur arrêté ou vide).`);
+      return;
+    }
     lines.forEach(l => {
       if (l.trim()) appendLogLine(l);
     });
   } catch (err) {
+    terminalBodyEl.innerHTML = '';
     appendLogLine(`[ERROR] Impossible de récupérer les logs: ${err.message}`);
   }
 }
