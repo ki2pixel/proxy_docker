@@ -56,7 +56,8 @@ body {
 .blob {
   position: absolute;
   border-radius: 50%;
-  filter: blur(120px);
+  /* Pré-flouté via le dégradé radial (pas de filter: blur dynamique,
+     coûteux au scroll — même rendu, zéro repaint) */
   opacity: 0.15;
 }
 
@@ -65,7 +66,7 @@ body {
   left: 15%;
   width: 500px;
   height: 500px;
-  background: radial-gradient(circle, #00f2fe, #4facfe);
+  background: radial-gradient(circle, rgba(0, 242, 254, 0.5), rgba(79, 172, 254, 0) 65%);
 }
 
 .blob-2 {
@@ -73,7 +74,7 @@ body {
   right: 10%;
   width: 600px;
   height: 600px;
-  background: radial-gradient(circle, #10b981, #059669);
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.5), rgba(5, 150, 105, 0) 65%);
 }
 
 .blob-3 {
@@ -81,7 +82,7 @@ body {
   left: 60%;
   width: 400px;
   height: 400px;
-  background: radial-gradient(circle, #8b5cf6, #ec4899);
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.5), rgba(236, 72, 153, 0) 65%);
 }
 
 .app-layout {
@@ -92,11 +93,10 @@ body {
   padding: 24px 20px 60px;
 }
 
-/* Glass Card */
+/* Glass Card — sans backdrop-filter (coûteux au scroll : re-floutage à chaque paint).
+   Le fond semi-opaque des cartes suffit au rendu glass sans le surcoût GPU. */
 .glass-card {
   background: var(--bg-surface);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
