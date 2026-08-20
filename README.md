@@ -54,13 +54,13 @@ graph TD
 
 ## 2. Fournisseurs de Monétisation Supportés
 
-| Fournisseur | Image Docker | Variables Clés (`.env`) | Tableau de Bord | Comportement & Validation en Production |
+| Fournisseur | Image Docker | Variables Clés (`.env`, par passerelle) | Tableau de Bord | Comportement & Validation en Production |
 | :--- | :--- | :--- | :--- | :--- |
-| **Pawns.app** | `iproyal/pawns-cli:latest` | `PAWNS_EMAIL`, `PAWNS_PASSWORD`, `PAWNS_DEVICE_NAME` | [pawns.app](https://pawns.app) | 🟢 **100% Actif** (IP reconnue comme résidentielle au tarif plein $0.20/GB). |
-| **Repocket** | `repocket/repocket:latest` | `REPOCKET_EMAIL`, `REPOCKET_API_KEY` | [repocket.com](https://repocket.com) | 🟢 **100% Actif** (Pair connecté avec succès, échange de paquets réels validé). |
-| **PacketStream** | `packetstream/psclient:latest` | `PACKETSTREAM_CID` | [packetstream.io](https://packetstream.io) | 🟢 **100% Opérationnel** (Tunnel actif, trafic relayé et comptabilisé en direct). |
-| **Honeygain** | `honeygain/honeygain:latest` | `HONEYGAIN_EMAIL`, `HONEYGAIN_PASSWORD`, `HONEYGAIN_DEVICE_NAME` | [dashboard.honeygain.com](https://dashboard.honeygain.com) | 🟢 **100% Connecté** (Authentification réussie, rafraîchissement périodique). |
-| **Proxyrack** | `./proxyrack/Dockerfile` | `API_KEY`, `DEVICE_NAME`, `UUID` *(optionnel)* | [peer.proxyrack.com](https://peer.proxyrack.com) | 🟢 **100% Connecté** (Génération d'UUID persisté sur volume et auto-enregistrement API). |
+| **Pawns.app** | `iproyal/pawns-cli:latest` | `GW{n}_PAWNS_EMAIL`, `GW{n}_PAWNS_PASSWORD`, `GW{n}_PAWNS_DEVICE_NAME` | [pawns.app](https://pawns.app) | 🟢 **Actif** sur 3/4 IP (tarif plein $0.20/GB) ; la 4e IP était en attente de validation plateforme. |
+| **Repocket** | `repocket/repocket:latest` | `GW{n}_REPOCKET_EMAIL`, `GW{n}_REPOCKET_API_KEY` | [repocket.com](https://repocket.com) | 🟢 **100% Actif** (4 pairs connectés, 4 IP distinctes, échange de paquets validé). |
+| **PacketStream** | `packetstream/psclient:latest` | `GW{n}_PACKETSTREAM_CID` | [packetstream.io](https://packetstream.io) | 🟢 **100% Opérationnel** (tunnels actifs sur les 4 passerelles, trafic comptabilisé). |
+| **Honeygain** | `honeygain/honeygain:latest` | `GW{n}_HONEYGAIN_EMAIL`, `GW{n}_HONEYGAIN_PASSWORD`, `GW{n}_HONEYGAIN_DEVICE_NAME` | [dashboard.honeygain.com](https://dashboard.honeygain.com) | 🟢 **Connecté** (4 devices actifs ; conflit de nom temporaire après redémarrage, voir pièges connus). |
+| **Proxyrack** | `./proxyrack/Dockerfile` | `GW{n}_API_KEY`, `GW{n}_DEVICE_NAME`, `GW{n}_UUID` *(laisser vide = auto-généré)* | [peer.proxyrack.com](https://peer.proxyrack.com) | 🟢 **Connecté** (4 devices enregistrés avec UUID distincts par volume). |
 
 ---
 
@@ -108,12 +108,20 @@ Caddy obtient automatiquement un certificat Let's Encrypt pour `DASHBOARD_DOMAIN
 
 ### ✏️ Éditeur de Configuration intégré :
 Le dashboard permet de **modifier le `.env` directement** (section "Configuration de la Stack"), sans SSH :
-* Champs groupés par catégorie (Passerelle, Dashboard, Fournisseurs) avec badge du schéma de proxy actif (session résidentielle vs classique).
+* Champs groupés en **sections repliables** : `Global` (dashboard, rotation, loglevel), `Passerelle 1..4` (proxy + 5 providers chacune), `Clés héritées` (anciennes clés mono-passerelle, conservées pour la migration) avec badge du schéma de proxy actif (session résidentielle vs classique).
 * Les mots de passe et clés API sont **masqués** (impossible de les lire ou de les écraser par accident — champ vide = inchangé).
 * Bouton **"Enregistrer"** (écrit le `.env`) ou **"Enregistrer & Appliquer"** (écrit + `docker compose up -d` avec confirmation).
 * Seules les clés connues sont éditables (allowlist) — pas de mode fichier brut.
 
 > ⚠️ Le `.env` reste gitignoré : un commit ne l'écrase jamais sur la VM. L'éditeur du dashboard et `sync_env.sh` modifient le même fichier — faites attention à ne pas écraser des changements faits de l'autre côté.
+
+### 🧠 Pièges connus & bonnes pratiques (retour d'expérience production)
+
+* **Proxyrack — UUID par passerelle** : chaque passerelle a son volume (`proxyrack_data_{1..4}`) et son device. Laissez `GW{n}_UUID` **vide** pour que chaque conteneur génère son propre UUID aléatoire persistant (nécessaire pour 4 devices distincts). Un UUID identique sur plusieurs passerelles = un seul device enregistré. Après avoir vidé l'UUID, recréez le conteneur (`docker compose up -d --force-recreate proxyrack-{n}`) et supprimez `uuid.txt`/`api.cfg` du volume si besoin.
+* **Honeygain — conflit de noms après redémarrage** : si un conteneur Honeygain redémarre (CI, restart), Honeygain refuse le device avec `Device with this name is already active` tant que l'ancienne session n'a pas expiré (quelques minutes). C'est temporaire et auto-résorbable — les devices repassent actifs d'eux-mêmes. Les noms `Docker-ISP-{1..4}-Honeygain` sont distincts et corrects.
+* **Validation IP par les plateformes** : Pawns et Honeygain peuvent **rejeter temporairement une nouvelle IP** (`tcpip-forward denied` / `Network Unusable`) alors que la passerelle est saine et que les autres providers (Repocket, PacketStream, Proxyrack) y sont actifs. C'est un délai de validation plateforme (souvent quelques heures), pas un bug de la stack.
+* **Port 8088 local** : si le dashboard affiche une **ancienne version** en navigation privée, c'est qu'un **ancien conteneur Docker local** (ou un ancien tunnel) occupe le port 8088 et sert une vieille image — pas la VM. Vérifiez `docker ps` / `ss -tlnp | grep 8088` et arrêtez la stack locale (`docker compose -p proxy_docker down`) pour libérer le port vers le tunnel SSH.
+* **Rate limit API** : l'API Proxyrack (`/api/device/add`) limite à 5 requêtes/min. Avec 3 conteneurs qui s'enregistrent simultanément, les retries se télescopent — les devices finissent par s'enregistrer (ou le faire manuellement, espacé de 20s).
 
 ---
 
@@ -169,10 +177,12 @@ AUTO_ROTATE_INTERVAL="50"
 ```
 Ou directement (les profils sont construits d'après `ENABLED_GATEWAYS` et `COMPOSE_PROFILES`) :
 ```bash
-docker compose --profile gw1 --profile gw1-all up -d --build
+# 1 passerelle + tous les fournisseurs :
+docker compose --profile gw1 --profile gw1-pawns --profile gw1-honeygain --profile gw1-repocket --profile gw1-packetstream --profile gw1-proxyrack up -d --build
 # 4 passerelles + tous les fournisseurs :
 docker compose --profile gw1 --profile gw2 --profile gw3 --profile gw4 --profile all up -d --build
 ```
+> 💡 `./scripts/start.sh` construit ces profils automatiquement depuis `ENABLED_GATEWAYS` + `COMPOSE_PROFILES` — c'est la méthode recommandée.
 
 Tableau de bord Web : **[http://localhost:8088](http://localhost:8088)** — connexion avec le `DASHBOARD_TOKEN` (page de login).
 
@@ -199,10 +209,12 @@ Tableau de bord Web : **[http://localhost:8088](http://localhost:8088)** — con
 ## 6. Déploiement Continu (CI/CD GitHub Actions)
 
 Le fichier [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) déploie automatiquement chaque mise à jour sur votre VM Azure lors d'un `git push origin main` :
-1. Validation de `docker compose config` (locale + sur la VM).
-2. `git pull` sur la VM, puis `docker compose up -d --build --remove-orphans` (sans down destructeur).
-3. Attente du healthcheck du dashboard (max 90s) avant de déclarer le succès ; la santé du gateway est signalée sans bloquer (elle dépend du proxy amont, pas du code).
+1. Validation de `docker compose config` (locale, avec les profils `gw1` + les 5 types).
+2. `git fetch && reset --hard origin/main` sur la VM, puis `docker compose up -d --build --remove-orphans` avec les profils construits d'après `ENABLED_GATEWAYS` + `COMPOSE_PROFILES` du `.env` de la VM (sans down destructeur).
+3. Attente du healthcheck du dashboard (max 90s) avant de déclarer le succès ; la santé des gateways est signalée sans bloquer (elle dépend des proxies amonts, pas du code).
 4. Nettoyage des images de plus de 72h uniquement.
+
+> ⚠️ Chaque déploiement CI **recrée tous les conteneurs** : les devices Honeygain peuvent être temporairement rejetés (`Device with this name is already active`) pendant quelques minutes — c'est normal et auto-résorbable (voir pièges connus).
 
 Le pipeline [`.github/workflows/security.yml`](.github/workflows/security.yml) scanne chaque push/PR : **gitleaks** (secrets), **shellcheck** (scripts bash) et **npm audit + tests** (controller).
 
