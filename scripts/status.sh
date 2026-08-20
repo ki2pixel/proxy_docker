@@ -14,20 +14,25 @@ echo "========================================================"
 echo "[+] Conteneurs Docker :"
 docker compose -p "$PROJECT_NAME" ps -a
 
-echo ""
-echo "--------------------------------------------------------"
-echo "[+] Diagnostic Réseau Passerelle :"
+# 2. Diagnostic Réseau par passerelle active
+GATEWAYS=$(get_enabled_gateways)
+for G in $GATEWAYS; do
+  GW="gateway-isp-$G"
+  echo ""
+  echo "--------------------------------------------------------"
+  echo "[+] Diagnostic Réseau Passerelle $GW :"
 
-if docker ps --format '{{.Names}}' | grep -q "^gateway-isp$"; then
+  if docker ps --format '{{.Names}}' | grep -q "^${GW}$"; then
     echo "[*] Diagnostic interne (Healthcheck) :"
-    docker exec gateway-isp /usr/local/bin/healthcheck.sh || echo "[-] Échec du healthcheck"
+    docker exec "$GW" /usr/local/bin/healthcheck.sh || echo "[-] Échec du healthcheck"
 
     echo ""
     echo "[*] Test DNS externe & IP publique (ipinfo.io via DoH) :"
-    docker exec gateway-isp curl -s --max-time 5 https://ipinfo.io/json 2>/dev/null || echo "[-] Requête IP externe indisponible"
-else
-    echo "[-] Le conteneur gateway-isp n'est pas en cours d'exécution."
-fi
+    docker exec "$GW" curl -s --max-time 5 https://ipinfo.io/json 2>/dev/null || echo "[-] Requête IP externe indisponible"
+  else
+    echo "[-] Le conteneur $GW n'est pas en cours d'exécution."
+  fi
+done
 
 PORT=$(get_env DASHBOARD_PORT "8088")
 echo ""

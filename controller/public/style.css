@@ -7,6 +7,7 @@
   
   --primary: #00f2fe;
   --primary-glow: rgba(0, 242, 254, 0.25);
+  --accent: #00f2fe;
   --secondary: #4facfe;
   --accent-emerald: #10b981;
   --accent-emerald-glow: rgba(16, 185, 129, 0.25);
@@ -462,6 +463,45 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 18px;
+}
+
+/* Gateway card (multi-passerelles) : occupe toute la largeur, providers internes */
+.gateway-card {
+  grid-column: 1 / -1;
+  background: var(--bg-surface);
+  border: 1px solid rgba(0, 242, 254, 0.22);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gw-ip-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.gw-ip {
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--accent, #00f2fe);
+}
+
+.gw-meta {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.gw-providers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  border-top: 1px dashed var(--border-subtle);
+  padding-top: 14px;
 }
 
 .skeleton-card {

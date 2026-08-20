@@ -63,36 +63,49 @@ fi
 # Update COMPOSE_PROFILES in .env (via lib.sh, échappe les valeurs)
 set_env COMPOSE_PROFILES "$TARGET"
 
-echo "[+] Application des conteneurs via Docker Compose..."
-if [ "$TARGET" != "all" ]; then
-  # Stop other monetization containers to ensure clean switch
-  ALL_CONTAINERS=("proxyrack-pop" "honeygain" "packetstream" "pawns" "repocket")
-  for C in "${ALL_CONTAINERS[@]}"; do
-    case "$TARGET" in
-      none) : ;; # aucun provider gardé : on arrête tout
-      proxyrack) [ "$C" == "proxyrack-pop" ] && continue ;;
-      honeygain) [ "$C" == "honeygain" ] && continue ;;
-      packetstream) [ "$C" == "packetstream" ] && continue ;;
-      pawns) [ "$C" == "pawns" ] && continue ;;
-      repocket) [ "$C" == "repocket" ] && continue ;;
-    esac
-    if docker ps -q -f name="^${C}$" | grep -q .; then
-      echo "[-] Arrêt de l'ancien conteneur $C..."
-      docker stop "$C" >/dev/null 2>&1 || true
-    fi
+# Application sur toutes les passerelles actives (profils combinés gw{n}-{type})
+GATEWAYS=$(get_enabled_gateways)
+echo "[+] Passerelles actives : $GATEWAYS"
+
+# Arrêt des providers devenus inactifs (nettoyage des anciens conteneurs)
+# Les noms de conteneurs sont désormais suffixés par passerelle (pawns-1...)
+if [ "$TARGET" != "all" ] && [ "$TARGET" != "none" ]; then
+  for G in $GATEWAYS; do
+    for TYPE in proxyrack honeygain packetstream pawns repocket; do
+      if [ "$TYPE" = "$TARGET" ]; then continue; fi
+      C="${TYPE}-${G}"
+      if docker ps -q -f name="^${C}$" | grep -q .; then
+        echo "[-] Arrêt de l'ancien conteneur $C..."
+        docker stop "$C" >/dev/null 2>&1 || true
+      fi
+    done
+  done
+fi
+if [ "$TARGET" = "none" ]; then
+  for G in $GATEWAYS; do
+    for TYPE in proxyrack honeygain packetstream pawns repocket; do
+      C="${TYPE}-${G}"
+      if docker ps -q -f name="^${C}$" | grep -q .; then
+        echo "[-] Arrêt du conteneur $C..."
+        docker stop "$C" >/dev/null 2>&1 || true
+      fi
+    done
   done
 fi
 
-# Launch with the target profile (projet compose cohérent : -p "$PROJECT_NAME")
-COMPOSE_PROFILES="$TARGET" docker compose -p "$PROJECT_NAME" up -d
+# Lancement avec les profils cibles (passerelles + types)
+COMPOSE_ARGS=$(compose_profiles_args)
+echo "[+] Profils compose :$COMPOSE_ARGS"
+# shellcheck disable=SC2086
+COMPOSE_PROFILES="$TARGET" docker compose -p "$PROJECT_NAME" $COMPOSE_ARGS up -d
 
 echo ""
 if [ "$TARGET" = "none" ]; then
-  echo "[✓] Aucun fournisseur actif : seuls la passerelle et le dashboard tournent."
+  echo "[✓] Aucun fournisseur actif : seules les passerelles et le dashboard tournent."
   echo "[*] Aucun trafic de monétisation — parfait en attendant un proxy stable."
 else
   echo "[✓] Fournisseur actif configuré sur : $TARGET !"
-  echo "[*] Le trafic de ce fournisseur est acheminé via la Passerelle ISP Dédiée."
+  echo "[*] Le trafic de ce fournisseur est acheminé via les Passerelles ISP Dédiées."
 fi
 echo "[*] Vérifiez le statut avec : ./scripts/status.sh"
 echo "========================================================"

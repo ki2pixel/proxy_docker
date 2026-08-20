@@ -19,10 +19,6 @@ const state = {
 
 // DOM Elements
 const heroIpEl = document.getElementById('hero-ip');
-const heroFlagEl = document.getElementById('hero-flag');
-const heroCountryEl = document.getElementById('hero-country');
-const heroCityEl = document.getElementById('hero-city');
-const heroIspEl = document.getElementById('hero-isp');
 const heroProxyTargetEl = document.getElementById('hero-proxy-target');
 const latencyValueEl = document.getElementById('latency-value');
 
@@ -149,7 +145,7 @@ if (logoutBtn) {
 }
 
 // -----------------------------------------------------------------------------
-// 1. Fetch & Render Status
+// 1. Fetch & Render Status (multi-passerelles)
 // -----------------------------------------------------------------------------
 async function fetchStatus() {
   if (!state.authenticated) return;
@@ -164,155 +160,236 @@ async function fetchStatus() {
 }
 
 function renderStatus(data) {
-  // Hero IP Card
-  if (data.ip) {
-    heroIpEl.innerText = data.ip;
-  } else {
-    heroIpEl.innerText = data.gatewayStatus === 'HEALTHY' ? 'Détection...' : 'Indisponible';
-  }
-  if (data.location) {
-    const code = data.location.country || '';
-    heroFlagEl.innerText = getFlagEmoji(code);
-    heroCountryEl.innerText = data.location.country || '--';
-    heroCityEl.innerText = data.location.city || '--';
-  }
-  if (data.isp) {
-    heroIspEl.innerText = data.isp.org || '--';
-  }
-  if (data.activeProxy && data.activeProxy.host) {
-    heroProxyTargetEl.innerText = `Proxy : ${data.activeProxy.protocol}://${data.activeProxy.host}:${data.activeProxy.port}`;
-    if (statProtocolEl) {
-      statProtocolEl.innerText = `${(data.activeProxy.protocol || 'SOCKS5').toUpperCase()} :${data.activeProxy.port || ''}`;
-    }
-  }
-  if (typeof data.latencyMs === 'number') {
-    const latText = `${data.latencyMs} ms`;
-    latencyValueEl.innerText = latText;
-    latencyValueEl.classList.remove('lat-ok', 'lat-mid', 'lat-slow');
-    latencyValueEl.classList.add(data.latencyMs < 350 ? 'lat-ok' : (data.latencyMs < 600 ? 'lat-mid' : 'lat-slow'));
-    if (statLatencyEl) {
-      statLatencyEl.innerText = latText;
-    }
-  }
+  const gateways = data.gateways || [];
+  const summary = data.summary || {};
 
-  // Gateway status
-  if (statGatewayStatusEl) {
-    const isHealthy = data.gatewayStatus === 'HEALTHY';
-    statGatewayStatusEl.innerText = isHealthy ? 'Active' : (data.gatewayStatus || 'En attente');
-    statGatewayStatusEl.className = isHealthy ? 'stat-number text-emerald' : 'stat-number text-amber';
-  }
+  // --- IP principale : première passerelle avec IP ---
+  const firstWithIp = gateways.find(g => g.ip);
+  heroIpEl.innerText = firstWithIp ? firstWithIp.ip : (gateways.length ? 'Détection...' : 'Indisponible');
+  heroProxyTargetEl.innerText = gateways.length
+    ? `Proxies : ${gateways.length} configuré(s)`
+    : 'Proxies : --';
 
-  // Header badges (gateway + DoH)
+  // --- Badges d'en-tête (agrégés) ---
   if (gatewayBadgeEl && gatewayBadgeTextEl) {
-    const isHealthy = data.gatewayStatus === 'HEALTHY';
-    gatewayBadgeEl.classList.toggle('status-healthy', isHealthy);
-    gatewayBadgeEl.classList.toggle('status-warning', !isHealthy);
-    gatewayBadgeTextEl.innerText = isHealthy
-      ? 'Passerelle ISP : Active'
-      : (data.gatewayStatus === 'UNKNOWN' ? 'Passerelle ISP : En attente' : 'Passerelle ISP : Hors ligne');
+    const healthy = gateways.filter(g => g.status === 'HEALTHY').length;
+    const total = gateways.length;
+    const allHealthy = total > 0 && healthy === total;
+    gatewayBadgeEl.classList.toggle('status-healthy', allHealthy);
+    gatewayBadgeEl.classList.toggle('status-warning', !allHealthy);
+    gatewayBadgeTextEl.innerText = total === 0
+      ? 'Passerelle ISP : Aucune'
+      : `Passerelles ISP : ${healthy}/${total} active(s)`;
   }
   if (dnsBadgeTextEl) {
-    dnsBadgeTextEl.innerText = data.gatewayStatus === 'HEALTHY' ? 'DoH DNS : Cloudflare' : 'DoH DNS : Inactif';
+    const anyHealthy = gateways.some(g => g.status === 'HEALTHY');
+    dnsBadgeTextEl.innerText = anyHealthy ? 'DoH DNS : Cloudflare' : 'DoH DNS : Inactif';
+  }
+  if (latencyValueEl) {
+    const latencies = gateways.filter(g => typeof g.latencyMs === 'number').map(g => g.latencyMs);
+    latencyValueEl.innerText = latencies.length ? `${Math.min(...latencies)} ms (min)` : '-- ms';
   }
 
-  // Monetization nodes
-  if (data.providers) {
-    const running = data.providers.filter(p => p.running).length;
-    if (statActiveNodesEl) {
-      statActiveNodesEl.innerText = `${running} / ${data.providers.length}`;
-    }
-    renderNodes(data.providers);
+  // --- Stats globales ---
+  if (statGatewayStatusEl) {
+    const healthy = gateways.filter(g => g.status === 'HEALTHY').length;
+    statGatewayStatusEl.innerText = `${healthy}/${gateways.length}`;
+    statGatewayStatusEl.className = healthy > 0 ? 'stat-number text-emerald' : 'stat-number text-amber';
   }
+  if (statLatencyEl) {
+    const latencies = gateways.filter(g => typeof g.latencyMs === 'number').map(g => g.latencyMs);
+    statLatencyEl.innerText = latencies.length ? `${Math.min(...latencies)} ms` : '-- ms';
+  }
+  if (statActiveNodesEl) {
+    statActiveNodesEl.innerText = `${summary.nodesRunning ?? 0} / ${summary.nodesTotal ?? 0}`;
+  }
+  if (statProtocolEl) {
+    const proto = gateways.find(g => g.activeProxy?.protocol)?.activeProxy?.protocol || 'SOCKS5';
+    statProtocolEl.innerText = proto.toUpperCase();
+  }
+
+  // --- Grille de cartes passerelles ---
+  renderGateways(gateways);
 }
 
 // -----------------------------------------------------------------------------
-// 2. Render Monetization Nodes
+// 1b. Render Gateway Cards (une par passerelle active)
 // -----------------------------------------------------------------------------
-function renderNodes(providers) {
+function renderGateways(gateways) {
   nodesGridEl.innerHTML = '';
-  if (!providers.length) {
+  if (!gateways.length) {
     const empty = document.createElement('div');
     empty.className = 'nodes-empty';
-    empty.textContent = 'Aucun nœud configuré.';
+    empty.textContent = 'Aucune passerelle configurée.';
     nodesGridEl.appendChild(empty);
     return;
   }
-  providers.forEach(p => {
-    const card = document.createElement('div');
-    card.className = 'node-card glass-card';
 
+  gateways.forEach(gw => {
+    const card = document.createElement('div');
+    card.className = 'gateway-card glass-card';
+
+    // En-tête passerelle
     const head = document.createElement('div');
     head.className = 'node-head';
-
     const titleBox = document.createElement('div');
     titleBox.className = 'node-title-box';
-
     const icon = document.createElement('span');
     icon.className = 'node-icon';
-    icon.textContent = p.icon || '📦';
+    icon.textContent = '🌐';
     titleBox.appendChild(icon);
-
     const name = document.createElement('span');
     name.className = 'node-name';
-    name.textContent = p.name || p.id;
+    name.textContent = `Passerelle ${gw.num} (${gw.container})`;
     titleBox.appendChild(name);
     head.appendChild(titleBox);
 
-    const isRunning = p.running;
+    const isHealthy = gw.status === 'HEALTHY';
     const statusBadge = document.createElement('span');
-    statusBadge.className = `node-status-badge ${isRunning ? 'running' : 'stopped'}`;
-    statusBadge.textContent = isRunning ? 'Actif & Routé' : 'Arrêté';
+    statusBadge.className = `node-status-badge ${isHealthy ? 'running' : 'stopped'}`;
+    statusBadge.textContent = isHealthy ? 'Active' : (gw.status === 'UNKNOWN' ? 'En attente' : 'Hors ligne');
     head.appendChild(statusBadge);
     card.appendChild(head);
 
+    // IP + localisation
+    const ipRow = document.createElement('div');
+    ipRow.className = 'gw-ip-row';
+    const ipEl = document.createElement('code');
+    ipEl.className = 'gw-ip';
+    ipEl.textContent = gw.ip || (isHealthy ? 'Détection...' : 'Indisponible');
+    ipRow.appendChild(ipEl);
+
+    const meta = document.createElement('span');
+    meta.className = 'gw-meta';
+    const loc = gw.location || {};
+    meta.textContent = `${getFlagEmoji(loc.country)} ${loc.country || '--'} · ${loc.city || '--'}${gw.isp?.org ? ' · ' + gw.isp.org : ''}`;
+    ipRow.appendChild(meta);
+    card.appendChild(ipRow);
+
+    // Détails
     const info = document.createElement('div');
     info.className = 'node-info';
 
-    const containerLine = document.createElement('div');
-    const containerCode = document.createElement('code');
-    containerCode.textContent = p.container;
-    containerLine.append('Conteneur : ', containerCode);
-    info.appendChild(containerLine);
+    const proxyLine = document.createElement('div');
+    proxyLine.append('Proxy : ');
+    const proxyCode = document.createElement('code');
+    proxyCode.textContent = gw.activeProxy?.host
+      ? `${gw.activeProxy.protocol}://${gw.activeProxy.host}:${gw.activeProxy.port}`
+      : 'non configuré';
+    proxyLine.appendChild(proxyCode);
+    info.appendChild(proxyLine);
 
-    const networkLine = document.createElement('div');
-    const networkCode = document.createElement('code');
-    networkCode.textContent = 'service:gateway-isp';
-    networkLine.append('Réseau : ', networkCode);
-    info.appendChild(networkLine);
-    card.appendChild(info);
-
-    const actions = document.createElement('div');
-    actions.className = 'node-actions';
-
-    const actionButtons = isRunning
-      ? [['restart', 'Redémarrer', 'btn-secondary'], ['stop', 'Arrêter', 'btn-secondary']]
-      : [['start', 'Démarrer', 'btn-primary']];
-    for (const [action, label, variant] of actionButtons) {
-      const btn = document.createElement('button');
-      btn.className = `btn ${variant} btn-sm`;
-      btn.textContent = label;
-      btn.addEventListener('click', () => nodeAction(p.id, action));
-      actions.appendChild(btn);
+    if (typeof gw.latencyMs === 'number') {
+      const latLine = document.createElement('div');
+      latLine.append('Latence : ');
+      const latCode = document.createElement('code');
+      latCode.textContent = `${gw.latencyMs} ms`;
+      latLine.appendChild(latCode);
+      info.appendChild(latLine);
     }
 
-    const dashboardLink = document.createElement('a');
-    dashboardLink.href = p.dashboard;
-    dashboardLink.target = '_blank';
-    dashboardLink.rel = 'noopener noreferrer';
-    dashboardLink.className = 'btn btn-secondary btn-sm';
-    dashboardLink.title = 'Ouvrir le tableau de bord';
-    dashboardLink.textContent = 'Dashboard ↗';
-    actions.appendChild(dashboardLink);
-    card.appendChild(actions);
+    card.appendChild(info);
+
+    // Actions passerelle
+    const gwActions = document.createElement('div');
+    gwActions.className = 'node-actions';
+    const rotateBtn = document.createElement('button');
+    rotateBtn.className = 'btn btn-secondary btn-sm';
+    rotateBtn.textContent = 'Rotation d\'IP';
+    rotateBtn.addEventListener('click', () => gatewayRotate(gw.id, rotateBtn));
+    gwActions.appendChild(rotateBtn);
+    card.appendChild(gwActions);
+
+    // Providers de cette passerelle
+    const providersWrap = document.createElement('div');
+    providersWrap.className = 'gw-providers';
+    (gw.providers || []).forEach(p => {
+      providersWrap.appendChild(renderProviderCard(p, gw.id));
+    });
+    card.appendChild(providersWrap);
 
     nodesGridEl.appendChild(card);
   });
 }
 
-window.nodeAction = async function(id, action) {
-  showToast(`Action ${action} en cours sur ${id}...`, 'info');
+// -----------------------------------------------------------------------------
+// 2. Render Provider Card (dans le contexte d'une passerelle)
+// -----------------------------------------------------------------------------
+function renderProviderCard(p, gwId) {
+  const card = document.createElement('div');
+  card.className = 'node-card glass-card';
+
+  const head = document.createElement('div');
+  head.className = 'node-head';
+
+  const titleBox = document.createElement('div');
+  titleBox.className = 'node-title-box';
+
+  const icon = document.createElement('span');
+  icon.className = 'node-icon';
+  icon.textContent = p.icon || '📦';
+  titleBox.appendChild(icon);
+
+  const name = document.createElement('span');
+  name.className = 'node-name';
+  name.textContent = p.name || p.id;
+  titleBox.appendChild(name);
+  head.appendChild(titleBox);
+
+  const isRunning = p.running;
+  const statusBadge = document.createElement('span');
+  statusBadge.className = `node-status-badge ${isRunning ? 'running' : 'stopped'}`;
+  statusBadge.textContent = isRunning ? 'Actif & Routé' : 'Arrêté';
+  head.appendChild(statusBadge);
+  card.appendChild(head);
+
+  const info = document.createElement('div');
+  info.className = 'node-info';
+
+  const containerLine = document.createElement('div');
+  const containerCode = document.createElement('code');
+  containerCode.textContent = p.container;
+  containerLine.append('Conteneur : ', containerCode);
+  info.appendChild(containerLine);
+
+  const networkLine = document.createElement('div');
+  const networkCode = document.createElement('code');
+  networkCode.textContent = `service:${gwId === 'gw1' ? 'gateway-isp' : `gateway-isp-${gwId.replace('gw', '')}`}`;
+  networkLine.append('Réseau : ', networkCode);
+  info.appendChild(networkLine);
+  card.appendChild(info);
+
+  const actions = document.createElement('div');
+  actions.className = 'node-actions';
+
+  const actionButtons = isRunning
+    ? [['restart', 'Redémarrer', 'btn-secondary'], ['stop', 'Arrêter', 'btn-secondary']]
+    : [['start', 'Démarrer', 'btn-primary']];
+  for (const [action, label, variant] of actionButtons) {
+    const btn = document.createElement('button');
+    btn.className = `btn ${variant} btn-sm`;
+    btn.textContent = label;
+    btn.addEventListener('click', () => nodeAction(gwId, p.id, action));
+    actions.appendChild(btn);
+  }
+
+  const dashboardLink = document.createElement('a');
+  dashboardLink.href = p.dashboard;
+  dashboardLink.target = '_blank';
+  dashboardLink.rel = 'noopener noreferrer';
+  dashboardLink.className = 'btn btn-secondary btn-sm';
+  dashboardLink.title = 'Ouvrir le tableau de bord';
+  dashboardLink.textContent = 'Dashboard ↗';
+  actions.appendChild(dashboardLink);
+  card.appendChild(actions);
+
+  return card;
+}
+
+window.nodeAction = async function(gwId, id, action) {
+  showToast(`Action ${action} en cours sur ${id} (${gwId})...`, 'info');
   try {
-    const res = await apiFetch(`/api/providers/${id}/${action}`, { method: 'POST' });
+    const res = await apiFetch(`/api/gateways/${gwId}/providers/${id}/${action}`, { method: 'POST' });
     const data = await res.json();
     if (data.success) {
       showToast(data.message, 'success');
@@ -324,6 +401,25 @@ window.nodeAction = async function(id, action) {
     if (err.message !== 'Session expirée') showToast(err.message, 'error');
   }
 };
+
+async function gatewayRotate(gwId, button) {
+  if (button) button.disabled = true;
+  showToast(`Rotation de l'IP de la passerelle ${gwId} en cours...`, 'info');
+  try {
+    const res = await apiFetch(`/api/gateways/${gwId}/rotate`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message || `Nouvelle IP : ${data.ip}`, 'success');
+      setTimeout(fetchStatus, 1500);
+    } else {
+      showToast(data.error || 'Erreur lors de la rotation', 'error');
+    }
+  } catch (err) {
+    if (err.message !== 'Session expirée') showToast(err.message, 'error');
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
 
 // -----------------------------------------------------------------------------
 // 3. Quick Actions & Helpers
@@ -348,12 +444,12 @@ if (quickRefreshBtn) {
   });
 }
 
-// Rotate IP button
+// Rotate IP button (passe par la route générique : défaut gw1)
 const rotateIpBtn = document.getElementById('btn-rotate-ip');
 if (rotateIpBtn) {
   rotateIpBtn.addEventListener('click', () => {
     withBusy(rotateIpBtn, async () => {
-      showToast('Rotation de l\'adresse IP en cours...', 'info');
+      showToast('Rotation de l\'adresse IP (passerelle 1) en cours...', 'info');
       try {
         const res = await apiFetch('/api/proxy/rotate', { method: 'POST' });
         const data = await res.json();
@@ -370,39 +466,19 @@ if (rotateIpBtn) {
   });
 }
 
-// Copy IP button
-function copyToClipboard(text) {
-  if (navigator.clipboard?.writeText) {
-    return navigator.clipboard.writeText(text);
-  }
-  // Fallback pour les contextes non-sécurisés (HTTP localhost, tunnel SSH)
-  return new Promise((resolve, reject) => {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.select();
-    try {
-      document.execCommand('copy');
-      resolve();
-    } catch (err) {
-      reject(err);
-    } finally {
-      ta.remove();
-    }
-  });
-}
-
+// Copy IP button (copie la première passerelle active)
 document.getElementById('btn-copy-ip').addEventListener('click', async () => {
-  const ip = heroIpEl.innerText;
-  if (ip && !ip.includes('...')) {
+  const first = state.status?.gateways?.find(g => g.ip);
+  const ip = first ? first.ip : null;
+  if (ip) {
     try {
       await copyToClipboard(ip);
       showToast(`Adresse IP ${ip} copiée dans le presse-papier !`);
     } catch {
       showToast('Impossible de copier l\'adresse IP', 'error');
     }
+  } else {
+    showToast('Aucune adresse IP disponible', 'error');
   }
 });
 
@@ -417,13 +493,14 @@ if (refreshStatusBtn) {
   });
 }
 
-// Restart all nodes button
+// Restart all nodes button (tous les providers de toutes les passerelles)
 document.getElementById('btn-restart-all-nodes').addEventListener('click', async () => {
   showToast('Redémarrage des conteneurs de monétisation...', 'info');
-  if (state.status?.providers) {
-    for (const p of state.status.providers) {
+  const gateways = state.status?.gateways || [];
+  for (const gw of gateways) {
+    for (const p of gw.providers || []) {
       if (p.running) {
-        await window.nodeAction(p.id, 'restart');
+        await window.nodeAction(gw.id, p.id, 'restart');
       }
     }
   }
@@ -432,11 +509,17 @@ document.getElementById('btn-restart-all-nodes').addEventListener('click', async
 // -----------------------------------------------------------------------------
 // 3b. Configuration (.env) — édition depuis le dashboard
 // -----------------------------------------------------------------------------
+// Catégories de l'éditeur : global + une section repliable par passerelle + legacy
 const CATEGORY_LABELS = {
-  gateway: 'Passerelle ISP',
-  dashboard: 'Dashboard',
-  providers: 'Fournisseurs'
+  global: '⚙️ Global (dashboard & rotation)',
+  gw1: 'Passerelle 1 — Proxy 1',
+  gw2: 'Passerelle 2 — Proxy 2',
+  gw3: 'Passerelle 3 — Proxy 3',
+  gw4: 'Passerelle 4 — Proxy 4',
+  legacy: 'Clés héritées (mono-passerelle)'
 };
+
+const CATEGORY_ORDER = ['global', 'gw1', 'gw2', 'gw3', 'gw4', 'legacy'];
 
 async function fetchConfig() {
   if (!state.authenticated) return;
@@ -466,7 +549,9 @@ function renderConfig(config, proxyScheme) {
     (groups[item.category] = groups[item.category] || []).push(item);
   }
 
-  for (const [category, items] of Object.entries(groups)) {
+  for (const category of CATEGORY_ORDER) {
+    const items = groups[category];
+    if (!items || !items.length) continue;
     const group = document.createElement('div');
     group.className = 'config-group';
 
@@ -632,8 +717,36 @@ async function fetchContainerLogs(name) {
   }
 }
 
-// Log tabs
+// Log tabs — construits dynamiquement à partir des passerelles et providers
 const CONTAINER_LOG_POLL_MS = 5000;
+
+function rebuildLogTabs(gateways) {
+  const tabsEl = document.getElementById('log-tabs');
+  if (!tabsEl) return;
+  const current = state.activeLogTarget;
+  tabsEl.innerHTML = '';
+
+  const sysTab = document.createElement('button');
+  sysTab.className = 'tab-btn' + (current === 'system' ? ' active' : '');
+  sysTab.dataset.target = 'system';
+  sysTab.textContent = 'Système / Hub';
+  tabsEl.appendChild(sysTab);
+
+  const targets = [];
+  for (const gw of gateways) {
+    targets.push({ name: gw.container, label: gw.container });
+    for (const p of gw.providers || []) {
+      targets.push({ name: p.container, label: p.container });
+    }
+  }
+  for (const t of targets) {
+    const btn = document.createElement('button');
+    btn.className = 'tab-btn' + (current === t.name ? ' active' : '');
+    btn.dataset.target = t.name;
+    btn.textContent = t.label;
+    tabsEl.appendChild(btn);
+  }
+}
 
 document.getElementById('log-tabs').addEventListener('click', (e) => {
   if (e.target.tagName === 'BUTTON') {
@@ -667,6 +780,7 @@ document.getElementById('btn-clear-logs').addEventListener('click', () => {
 async function initAuthenticated() {
   state.authenticated = true;
   await fetchStatus();
+  if (state.status?.gateways) rebuildLogTabs(state.status.gateways);
   fetchConfig();
   setupLogsSSE();
 }

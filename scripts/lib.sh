@@ -13,6 +13,81 @@ PROJECT_ROOT="$(cd "$LIB_DIR/.." && pwd)"
 export PROJECT_ROOT
 
 # -----------------------------------------------------------------------------
+# get_enabled_gateways : liste des numéros de passerelles actives (ENABLED_GATEWAYS)
+#   défaut : "1" (mono-passerelle rétro-compatible)
+#   sortie : "1" | "1 2" | "1 2 3 4"
+# -----------------------------------------------------------------------------
+get_enabled_gateways() {
+    local raw
+    raw=$(get_env ENABLED_GATEWAYS "1")
+    # Normalise : "1,2, 3" -> "1 2 3", filtre les numéros 1..4 valides
+    echo "$raw" | tr ',' ' ' | tr -s ' ' | tr ' ' '\n' \
+        | grep -E '^[1-4]$' | sort -n -u | tr '\n' ' ' | sed 's/ $//'
+}
+
+# -----------------------------------------------------------------------------
+# get_gateway_env_prefix <n> : préfixe des clés .env d'une passerelle
+#   ex. get_gateway_env_prefix 2 -> GW2_
+# -----------------------------------------------------------------------------
+get_gateway_env_prefix() {
+    echo "GW${1}_"
+}
+
+# -----------------------------------------------------------------------------
+# compose_profiles_args : construit les arguments --profile pour docker compose
+#   à partir d'ENABLED_GATEWAYS (gw{n}) et de COMPOSE_PROFILES (types).
+#   Avec le nouveau schéma de profils combinés gw{n}-{type}, on active :
+#     - les profils gw{n} (passerelles)
+#     - les profils combinés gw{n}-{type} pour chaque passerelle active × type
+#   ATTENTION : il faut TOUJOURS passer au moins --profile gw{n} pour une
+#   passerelle — sinon ses providers n'ont pas de réseau (fail-closed).
+# -----------------------------------------------------------------------------
+compose_profiles_args() {
+    local gws types t g args=""
+    gws=$(get_enabled_gateways)
+    # COMPOSE_PROFILES peut être "all" | "none" | liste séparée par virgules
+    types=$(get_env COMPOSE_PROFILES "none" | tr ',' ' ' | tr -s ' ')
+    # "all" = tous les types ; "none" = aucun provider
+    if [ "$types" = "all" ]; then
+        types="proxyrack honeygain packetstream pawns repocket"
+    elif [ "$types" = "none" ]; then
+        types=""
+    fi
+    for g in $gws; do
+        args="$args --profile gw${g}"
+        for t in $types; do
+            args="$args --profile gw${g}-${t}"
+        done
+    done
+    echo "$args"
+}
+
+# -----------------------------------------------------------------------------
+# gateway_container <n> : nom du conteneur passerelle
+# -----------------------------------------------------------------------------
+gateway_container() {
+    echo "gateway-isp-$1"
+}
+
+# -----------------------------------------------------------------------------
+# set_gateway_env <n> <KEY> <VALUE> : met à jour GW{n}_<KEY> dans le .env
+# -----------------------------------------------------------------------------
+set_gateway_env() {
+    local n="$1" key="$2" value="$3"
+    set_env "GW${n}_${key}" "$value"
+}
+
+# -----------------------------------------------------------------------------
+# each_gateway <function> : exécute une fonction pour chaque passerelle active
+# -----------------------------------------------------------------------------
+each_gateway() {
+    local fn="$1" g
+    for g in $(get_enabled_gateways); do
+        "$fn" "$g"
+    done
+}
+
+# -----------------------------------------------------------------------------
 # Lecture du .env : charge toutes les clés dans des variables d'environnement
 # (sans écraser les variables déjà définies).
 # -----------------------------------------------------------------------------

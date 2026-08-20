@@ -1,9 +1,18 @@
 import crypto from 'crypto';
 
+// -----------------------------------------------------------------------------
+// Passerelles supportées (multi-gateway) : GW1_..GW4_
+// -----------------------------------------------------------------------------
+export const GATEWAY_NUMS = [1, 2, 3, 4];
+
 // Clés considérées comme secrètes (redaction dans les logs)
-export const SECRET_KEYS = [
+const BASE_SECRET_KEYS = [
   'ISP_PROXY_PASS', 'API_KEY', 'UUID', 'HONEYGAIN_PASSWORD', 'PAWNS_PASSWORD',
   'PACKETSTREAM_CID', 'REPOCKET_API_KEY', 'DASHBOARD_TOKEN', 'DASHBOARD_SECRET'
+];
+export const SECRET_KEYS = [
+  ...BASE_SECRET_KEYS,
+  ...GATEWAY_NUMS.flatMap(n => BASE_SECRET_KEYS.map(k => `GW${n}_${k}`))
 ];
 
 // -----------------------------------------------------------------------------
@@ -115,34 +124,65 @@ export const ALLOWED_ACTIONS = new Set(['start', 'stop', 'restart']);
 // -----------------------------------------------------------------------------
 // Configuration du dashboard (.env) : clés connues, sensibilité, catégories
 // -----------------------------------------------------------------------------
-const SENSITIVE_KEY_RE = /^(ISP_PROXY_PASS|API_KEY|UUID|.*_PASSWORD|.*_API_KEY)$/;
+// Une clé est sensible si elle est secrète, éventuellement préfixée par passerelle (GW1_, GW2_...)
+const SENSITIVE_KEY_RE = /^(GW\d+_)?(ISP_PROXY_PASS|API_KEY|UUID|.*_PASSWORD|.*_API_KEY)$/;
+
+// Meta des clés globales (dashboard + rotation + gateway commun)
+const GLOBAL_KEYS = [
+  { key: 'DASHBOARD_PORT', category: 'global', label: 'Port du dashboard' },
+  { key: 'COMPOSE_PROFILES', category: 'global', label: 'Profils actifs', options: ['none', 'repocket', 'honeygain', 'packetstream', 'pawns', 'proxyrack', 'all'] },
+  { key: 'ENABLED_GATEWAYS', category: 'global', label: 'Passerelles actives (ex. 1,2,3,4)' },
+  { key: 'AUTO_ROTATE_SESSION', category: 'global', label: 'Rotation automatique', options: ['true', 'false'] },
+  { key: 'AUTO_ROTATE_INTERVAL', category: 'global', label: 'Intervalle de rotation (min)' },
+  { key: 'GATEWAY_LOGLEVEL', category: 'global', label: 'Niveau de log gateway', options: ['warning', 'info', 'debug'] }
+];
+
+// Meta des clés par passerelle (proxy + 5 providers)
+const GATEWAY_KEYS = (n) => [
+  { key: `GW${n}_ISP_PROXY_PROTOCOL`, category: `gw${n}`, label: 'Protocole du proxy', options: ['socks5', 'http'] },
+  { key: `GW${n}_ISP_PROXY_HOST`, category: `gw${n}`, label: 'Hôte du proxy' },
+  { key: `GW${n}_ISP_PROXY_PORT`, category: `gw${n}`, label: 'Port du proxy' },
+  { key: `GW${n}_ISP_PROXY_USER`, category: `gw${n}`, label: 'Utilisateur du proxy' },
+  { key: `GW${n}_ISP_PROXY_PASS`, category: `gw${n}`, label: 'Mot de passe du proxy' },
+  { key: `GW${n}_API_KEY`, category: `gw${n}`, label: 'Proxyrack — clé API' },
+  { key: `GW${n}_UUID`, category: `gw${n}`, label: 'Proxyrack — UUID' },
+  { key: `GW${n}_DEVICE_NAME`, category: `gw${n}`, label: 'Proxyrack — nom du device' },
+  { key: `GW${n}_HONEYGAIN_EMAIL`, category: `gw${n}`, label: 'Honeygain — email' },
+  { key: `GW${n}_HONEYGAIN_PASSWORD`, category: `gw${n}`, label: 'Honeygain — mot de passe' },
+  { key: `GW${n}_HONEYGAIN_DEVICE_NAME`, category: `gw${n}`, label: 'Honeygain — device' },
+  { key: `GW${n}_PACKETSTREAM_CID`, category: `gw${n}`, label: 'PacketStream — CID' },
+  { key: `GW${n}_PAWNS_EMAIL`, category: `gw${n}`, label: 'Pawns — email' },
+  { key: `GW${n}_PAWNS_PASSWORD`, category: `gw${n}`, label: 'Pawns — mot de passe' },
+  { key: `GW${n}_PAWNS_DEVICE_NAME`, category: `gw${n}`, label: 'Pawns — device' },
+  { key: `GW${n}_REPOCKET_EMAIL`, category: `gw${n}`, label: 'Repocket — email' },
+  { key: `GW${n}_REPOCKET_API_KEY`, category: `gw${n}`, label: 'Repocket — clé API' }
+];
+
+// Clés historiques (mono-passerelle) : conservées pour la migration et la redaction
+const LEGACY_KEYS = [
+  { key: 'ISP_PROXY_PROTOCOL', category: 'legacy', label: 'Protocole du proxy (legacy)' },
+  { key: 'ISP_PROXY_HOST', category: 'legacy', label: 'Hôte du proxy (legacy)' },
+  { key: 'ISP_PROXY_PORT', category: 'legacy', label: 'Port du proxy (legacy)' },
+  { key: 'ISP_PROXY_USER', category: 'legacy', label: 'Utilisateur du proxy (legacy)' },
+  { key: 'ISP_PROXY_PASS', category: 'legacy', label: 'Mot de passe du proxy (legacy)' },
+  { key: 'API_KEY', category: 'legacy', label: 'Proxyrack — clé API (legacy)' },
+  { key: 'UUID', category: 'legacy', label: 'Proxyrack — UUID (legacy)' },
+  { key: 'DEVICE_NAME', category: 'legacy', label: 'Proxyrack — device (legacy)' },
+  { key: 'HONEYGAIN_EMAIL', category: 'legacy', label: 'Honeygain — email (legacy)' },
+  { key: 'HONEYGAIN_PASSWORD', category: 'legacy', label: 'Honeygain — mot de passe (legacy)' },
+  { key: 'HONEYGAIN_DEVICE_NAME', category: 'legacy', label: 'Honeygain — device (legacy)' },
+  { key: 'PACKETSTREAM_CID', category: 'legacy', label: 'PacketStream — CID (legacy)' },
+  { key: 'PAWNS_EMAIL', category: 'legacy', label: 'Pawns — email (legacy)' },
+  { key: 'PAWNS_PASSWORD', category: 'legacy', label: 'Pawns — mot de passe (legacy)' },
+  { key: 'PAWNS_DEVICE_NAME', category: 'legacy', label: 'Pawns — device (legacy)' },
+  { key: 'REPOCKET_EMAIL', category: 'legacy', label: 'Repocket — email (legacy)' },
+  { key: 'REPOCKET_API_KEY', category: 'legacy', label: 'Repocket — clé API (legacy)' }
+];
 
 export const CONFIG_KEYS = [
-  // Passerelle
-  { key: 'ISP_PROXY_PROTOCOL', category: 'gateway', label: 'Protocole du proxy', options: ['socks5', 'http'] },
-  { key: 'ISP_PROXY_HOST', category: 'gateway', label: 'Hôte du proxy' },
-  { key: 'ISP_PROXY_PORT', category: 'gateway', label: 'Port du proxy' },
-  { key: 'ISP_PROXY_USER', category: 'gateway', label: 'Utilisateur du proxy' },
-  { key: 'ISP_PROXY_PASS', category: 'gateway', label: 'Mot de passe du proxy' },
-  { key: 'AUTO_ROTATE_SESSION', category: 'gateway', label: 'Rotation automatique', options: ['true', 'false'] },
-  { key: 'AUTO_ROTATE_INTERVAL', category: 'gateway', label: 'Intervalle de rotation (min)' },
-  { key: 'GATEWAY_LOGLEVEL', category: 'gateway', label: 'Niveau de log gateway', options: ['warning', 'info', 'debug'] },
-  // Dashboard
-  { key: 'DASHBOARD_PORT', category: 'dashboard', label: 'Port du dashboard' },
-  { key: 'COMPOSE_PROFILES', category: 'dashboard', label: 'Profils actifs', options: ['none', 'repocket', 'honeygain', 'packetstream', 'pawns', 'proxyrack', 'all'] },
-  // Fournisseurs
-  { key: 'API_KEY', category: 'providers', label: 'Proxyrack — clé API' },
-  { key: 'UUID', category: 'providers', label: 'Proxyrack — UUID' },
-  { key: 'DEVICE_NAME', category: 'providers', label: 'Proxyrack — nom du device' },
-  { key: 'HONEYGAIN_EMAIL', category: 'providers', label: 'Honeygain — email' },
-  { key: 'HONEYGAIN_PASSWORD', category: 'providers', label: 'Honeygain — mot de passe' },
-  { key: 'HONEYGAIN_DEVICE_NAME', category: 'providers', label: 'Honeygain — device' },
-  { key: 'PACKETSTREAM_CID', category: 'providers', label: 'PacketStream — CID' },
-  { key: 'PAWNS_EMAIL', category: 'providers', label: 'Pawns — email' },
-  { key: 'PAWNS_PASSWORD', category: 'providers', label: 'Pawns — mot de passe' },
-  { key: 'PAWNS_DEVICE_NAME', category: 'providers', label: 'Pawns — device' },
-  { key: 'REPOCKET_EMAIL', category: 'providers', label: 'Repocket — email' },
-  { key: 'REPOCKET_API_KEY', category: 'providers', label: 'Repocket — clé API' }
+  ...GLOBAL_KEYS,
+  ...GATEWAY_NUMS.flatMap(n => GATEWAY_KEYS(n)),
+  ...LEGACY_KEYS
 ];
 
 const CONFIG_BY_KEY = new Map(CONFIG_KEYS.map(c => [c.key, c]));

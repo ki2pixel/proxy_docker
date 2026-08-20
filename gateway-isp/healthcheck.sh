@@ -24,9 +24,10 @@ if ! pgrep -f "dnsproxy" > /dev/null 2>&1; then
     FAIL=1
 fi
 
-# 3. L'interface tun0 doit exister et être up
-if ! ip link show tun0 > /dev/null 2>&1; then
-    echo "[-] Healthcheck failed: tun0 interface missing"
+# 3. L'interface TUN (tun0 par défaut) doit exister et être up
+TUN_NAME="${TUN:-tun0}"
+if ! ip link show "$TUN_NAME" > /dev/null 2>&1; then
+    echo "[-] Healthcheck failed: $TUN_NAME interface missing"
     FAIL=1
 fi
 

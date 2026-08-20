@@ -94,7 +94,17 @@ scp "${SCP_OPTS[@]}" .env "${SSH_USER}@${SERVER_IP}:/tmp/.env.proxy_docker"
 
 # 2. Déplacement et redémarrage des conteneurs
 echo "[2/2] Application de la nouvelle configuration et redémarrage..."
-ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SERVER_IP}" "sudo cp /tmp/.env.proxy_docker ${REMOTE_DIR}/.env && sudo chown -R ${SSH_USER}:${SSH_USER} ${REMOTE_DIR} && rm -f /tmp/.env.proxy_docker && cd ${REMOTE_DIR} && docker compose up -d"
+# Construit les profils gw{n} + gw{n}-{type} d'après le .env synchronisé
+# (même logique que scripts/lib.sh, exécutée côté VM après copie)
+ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SERVER_IP}" "sudo cp /tmp/.env.proxy_docker ${REMOTE_DIR}/.env && sudo chown -R ${SSH_USER}:${SSH_USER} ${REMOTE_DIR} && rm -f /tmp/.env.proxy_docker && cd ${REMOTE_DIR} && \
+  GWS=\$(grep -E '^ENABLED_GATEWAYS=' .env | cut -d= -f2 | tr ',' ' ' | tr -d '\"' | tr -s ' ') ; \
+  [ -z \"\$GWS\" ] && GWS=1 ; \
+  TYPES=\$(grep -E '^COMPOSE_PROFILES=' .env | cut -d= -f2 | tr -d '\"' | tr ',' ' ' | tr -s ' ') ; \
+  if [ \"\$TYPES\" = \"all\" ]; then TYPES='proxyrack honeygain packetstream pawns repocket'; elif [ \"\$TYPES\" = \"none\" ]; then TYPES=''; fi ; \
+  ARGS='' ; \
+  for g in \$GWS; do ARGS=\"\$ARGS --profile gw\${g}\"; for t in \$TYPES; do ARGS=\"\$ARGS --profile gw\${g}-\${t}\"; done; done ; \
+  echo \"Profils compose :\$ARGS\" ; \
+  docker compose \$ARGS up -d"
 
 # 3. Vérification de l'état des conteneurs après redémarrage
 echo "[3/3] Vérification de l'état des conteneurs..."

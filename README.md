@@ -1,65 +1,54 @@
-# Multi-Providers Monetization Hub & Residential ISP Gateway sur Docker
+# Multi-Providers Monetization Hub & Multi-Gateways ISP sur Docker
 
-Système automatisé et sécurisé de monétisation de bande passante couplant une **passerelle réseau résidentielle / ISP dédiée** et **5 fournisseurs de monétisation** (Proxyrack, Honeygain, PacketStream, Pawns.app, Repocket) au sein d'un environnement Docker isolé avec bascule à chaud, watchdog d'auto-guérison et tableau de bord Web.
+Système automatisé et sécurisé de monétisation de bande passante couplant **jusqu'à 4 passerelles réseau résidentielles / ISP dédiées** (`gateway-isp-1..4`) et **5 fournisseurs de monétisation par passerelle** (Proxyrack, Honeygain, PacketStream, Pawns.app, Repocket) au sein d'un environnement Docker isolé avec bascule à chaud, watchdog d'auto-guérison et tableau de bord Web.
 
 ---
 
 ## 1. Architecture Réseau, Sécurité & Auto-Guérison
 
-L'architecture repose sur l'isolation réseau totale de chaque nœud de monétisation grâce au partage d'espace de noms réseau (`network_mode: service:gateway-isp`). Tout le trafic L3/L4 des conteneurs est capturé et acheminé de manière transparente via `tun2socks` et un résolveur DNS-over-HTTPS chiffré (`dnsproxy`) vers un proxy amont ISP / Résidentiel.
+L'architecture repose sur l'isolation réseau totale de chaque pool de nœuds grâce au partage d'espace de noms réseau (`network_mode: service:gateway-isp-{n}`). **Chaque passerelle possède son propre namespace** : son propre `tun0`, sa propre table de routage (`0x22b`), son propre résolveur DNS-over-HTTPS (`dnsproxy`) et son propre `tun2socks` vers SON proxy amont — il n'y a **aucun conflit** entre 4 instances (aucun port publié sur l'hôte).
 
 ```mermaid
 graph TD
     subgraph Docker ["Environnement Docker (Local ou Cloud Azure)"]
-        subgraph NetNamespace ["Namespace Réseau Partagé (network_mode: service:gateway-isp)"]
-            
-            subgraph GatewayContainer ["Conteneur : gateway-isp"]
-                TUN["Interface Virtuelle tun0<br>(198.18.0.1/15)"]
-                T2S["Moteur Transparent Proxy (tun2socks)<br>• Capture L3 transparente<br>• Routage de stratégie (table 0x22b)"]
-                DOH["Résolveur DNS-over-HTTPS (dnsproxy)<br>• Port 127.0.0.1:53 (Cloudflare/Google DoH)<br>• Bypasses stricts anti-fuite DNS"]
-                WD["🛡️ Watchdog d'Auto-Guérison<br>• Failover perte de connexion (~40s)<br>• Rotation préventive (50 min, via controller)<br>• Auto-rotation au boot"]
-                SOCAT["Pont Local TCP/SOCKS5 (socat)<br>127.0.0.1:23320 -> Proxy Amont"]
-            end
-            
-            subgraph ProvidersContainers ["5 Fournisseurs de Monétisation Conteneurisés"]
-                PR["proxyrack-pop (Node.js / Go Core v60)"]
-                HG["honeygain (honeygain/honeygain)"]
-                PS["packetstream (packetstream/psclient)"]
-                PA["pawns (iproyal/pawns-cli)"]
-                RP["repocket (repocket/repocket)"]
-            end
+        subgraph GW1 ["Namespace Réseau : gateway-isp-1 (Proxy 1)"]
+            TUN1["tun0<br>198.18.0.1/15"] --> T2S1["tun2socks"]
+            DOH1["dnsproxy DoH<br>127.0.0.1:53"]
+            P1["pawns-1 · honeygain-1 · repocket-1 · packetstream-1 · proxyrack-1"]
+        end
+        subgraph GW2 ["Namespace Réseau : gateway-isp-2 (Proxy 2)"]
+            TUN2["tun0<br>198.18.0.1/15"] --> T2S2["tun2socks"]
+            DOH2["dnsproxy DoH<br>127.0.0.1:53"]
+            P2["pawns-2 · honeygain-2 · repocket-2 · packetstream-2 · proxyrack-2"]
+        end
+        subgraph GW4 ["... gateway-isp-3 · gateway-isp-4 (Proxies 3 & 4)"]
+            P4["Même topologie, blocs GW3_/GW4_"]
         end
 
         subgraph DashboardContainer ["Conteneur : isp-dashboard"]
-            DASH["Superviseur Express.js & SSE (Port :8088)<br>• Docker Engine Socket (/var/run/docker.sock)<br>• Métriques & Géolocalisation en direct<br>• Éditeur de configuration (.env)<br>• Bouton 1-Clic de Rotation d'IP<br>• CSP stricte + badges d'état en direct"]
+            DASH["Superviseur Express.js & SSE (Port :8088)<br>• Docker Engine Socket<br>• Métriques par passerelle (IP, latence, santé)<br>• Éditeur .env en sections par passerelle<br>• Rotation d'IP individuelle par passerelle"]
         end
 
-        UPSTREAM["Proxy Résidentiel / Static ISP Amont<br>(FlameProxies, PrivateProxy, etc.)"]
-        INTERNET["Web Public (Trafic Monétisé Sortant)"]
+        UPSTREAM1["Proxy Résidentiel 1"] --> INTERNET
+        UPSTREAM2["Proxy Résidentiel 2"] --> INTERNET
     end
 
-    PR -->|Trafic sortant PoP| TUN
-    HG -->|Trafic sortant Honeygain| TUN
-    PS -->|Trafic sortant PacketStream| TUN
-    PA -->|Trafic sortant Pawns| TUN
-    RP -->|Trafic sortant Repocket| TUN
-
-    TUN --> T2S
-    T2S -->|Encapsulation SOCKS5 / TCP| UPSTREAM
-    UPSTREAM -->|Sortie sous IP Résidentielle / ISP| INTERNET
-
-    WD -->|Surveillance & Auto-Rotation de session| T2S
-    DASH -->|Pilotage à chaud via Docker Socket| ProvidersContainers
-    DASH -->|Surveillance Santé & Déclencheur Rotation| GatewayContainer
+    P1 --> TUN1
+    P2 --> TUN2
+    T2S1 -->|SOCKS5| UPSTREAM1
+    T2S2 -->|SOCKS5| UPSTREAM2
+    DASH -->|Pilotage à chaud via Docker Socket| P1
+    DASH -->|Pilotage à chaud via Docker Socket| P2
 ```
 
 ### Points Clés de l'Architecture :
-* 🛡️ **Isolation 100% Garantie (Kill-Switch / Zéro Fuite)** : Le trafic des conteneurs ne touche jamais la connexion IP personnelle ou l'IP publique du serveur hôte. Si le proxy amont tombe, le trafic est instantanément bloqué.
-* 🔄 **Watchdog d'Auto-Guérison (Self-Healing)** : Détecte les déconnexions de sessions résidentielles et génère automatiquement une nouvelle session active (failover en ~40s).
-* ⏰ **Rotation Préventive (50 min)** : Anticipe la limite des sessions temporaires de 60 minutes — déclenchée par le controller (dashboard), plus dans le gateway.
-* ⚡ **DNS-over-HTTPS (DoH)** : Prévention absolue des fuites DNS grâce au résolveur local `dnsproxy` routé via DoH Cloudflare / Google / Quad9.
-* 🔐 **Dashboard Authentifié** : accès protégé par token (`DASHBOARD_TOKEN`), sessions signées HMAC, CSRF, rate limiting, **Content Security Policy stricte** (aucun script/ressource externe hors Google Fonts) — plus d'exposition publique par défaut (accès via tunnel SSH).
-* 📊 **Tableau de Bord & API en Temps Réel** : Suivi des métriques de connexion, logs système en continu (SSE), logs conteneurs auto-actualisés (polling 5s) et pilotage individuel des conteneurs via interface Web (port `8088`, localhost uniquement).
+* 🛡️ **Isolation 100% Garantie par passerelle (Kill-Switch / Zéro Fuite)** : le trafic d'un pool ne touche jamais l'IP du serveur hôte ni l'IP d'un autre pool. Si le proxy amont d'une passerelle tombe, **son** trafic est instantanément bloqué (les autres passerelles continuent).
+* 🔄 **Watchdog d'Auto-Guérison par passerelle** : chaque gateway-isp détecte ses déconnexions et génère une nouvelle session active (failover ~40s).
+* ⏰ **Rotation Préventive par passerelle (50 min)** : déclenchée par le controller pour chaque passerelle dont le proxy est en mode session résidentielle (`session-`).
+* ⚡ **DNS-over-HTTPS (DoH)** par passerelle : prévention absolue des fuites DNS (Cloudflare / Google / Quad9).
+* 🌐 **Multi-pools d'IP** : avec `ENABLED_GATEWAYS="1,2,3,4"`, chaque pool dispose de son propre quota de connexions (ex. 4 × 1000 connexions) et de ses propres devices déclarés sur les plateformes (`Device-ISP-1`, `Device-ISP-2`...).
+* 🔐 **Dashboard Authentifié** : token (`DASHBOARD_TOKEN`), sessions signées HMAC, CSRF, rate limiting, **CSP stricte** — exposition via tunnel SSH uniquement.
+* 📊 **Tableau de Bord & API en Temps Réel** : état individuel de chaque passerelle (IP, géolocalisation, latence, santé), nœuds par passerelle, logs SSE + polling 5s par conteneur, édition `.env` en sections repliables par passerelle.
 
 ---
 
@@ -148,46 +137,41 @@ DASHBOARD_PORT=8088
 DASHBOARD_TOKEN="votre_token_connexion_dashboard"
 DASHBOARD_SECRET="votre_secret_hmac_session"
 
+# Passerelles actives : "1" | "1,2" | "1,2,3" | "1,2,3,4"
+ENABLED_GATEWAYS="1"
+
 # Fournisseurs actifs : none | proxyrack | honeygain | packetstream | pawns | repocket | all
-# "none" = aucun provider (seuls la passerelle et le dashboard tournent)
+# "none" = aucun provider (seules les passerelles et le dashboard tournent)
 COMPOSE_PROFILES="all"
 
-# --- Passerelle ISP / Residential Dédiée ---
-# Deux schémas supportés :
-#   A) Session résidentielle (type FlameProxies) : USER contient "session-..." → rotation auto
-#   B) Classique HOST:PORT:USER:PASS (proxy statique) → pas de rotation, tunnel stable
-ISP_PROXY_PROTOCOL="socks5"
-ISP_PROXY_HOST="proxy.flameproxies.com"
-ISP_PROXY_PORT="1080"
-ISP_PROXY_USER="votre_identifiant_session"
-ISP_PROXY_PASS="votre_mot_de_passe"
-GATEWAY_LOGLEVEL="warn"
+# --- Passerelle 1 (fallback clés historiques ISP_PROXY_*) ---
+GW1_ISP_PROXY_PROTOCOL="socks5"
+GW1_ISP_PROXY_HOST="proxy.flameproxies.com"
+GW1_ISP_PROXY_PORT="1080"
+GW1_ISP_PROXY_USER="votre_identifiant_session"
+GW1_ISP_PROXY_PASS="votre_mot_de_passe"
+# ... et les identifiants GW1_* de chaque fournisseur (pawns, honeygain, ...)
 
-# --- Auto-Rotation & Watchdog ---
-# La rotation préventive ne s'active QUE si ISP_PROXY_USER contient "session-".
-# Sur un proxy classique (schéma B), elle est automatiquement désactivée.
+# --- Passerelles 2, 3, 4 : mêmes clés préfixées GW2_/GW3_/GW4_ ---
+# Chaque passerelle = 1 proxy amont distinct = 1 pool d'IP = 1 quota de connexions.
+
+# --- Global (appliqué à toutes les passerelles) ---
+GATEWAY_LOGLEVEL="warn"
 AUTO_ROTATE_SESSION="true"
 AUTO_ROTATE_INTERVAL="50"
-
-# --- Identifiants Fournisseurs de Monétisation ---
-API_KEY="votre_cle_api_proxyrack"
-HONEYGAIN_EMAIL="votre_email_honeygain"
-HONEYGAIN_PASSWORD="votre_mot_de_passe"
-PACKETSTREAM_CID="votre_customer_id"
-PAWNS_EMAIL="votre_email_pawns"
-PAWNS_PASSWORD="votre_mot_de_passe"
-REPOCKET_EMAIL="votre_email_repocket"
-REPOCKET_API_KEY="votre_cle_api_repocket"
 ```
+> ⚠️ Les anciennes clés (`ISP_PROXY_HOST`, `PAWNS_EMAIL`, ...) restent **acceptées** : elles servent de fallback pour la passerelle 1 (migration sans casse). Le dashboard continue de les afficher (section "Clés héritées").
 > ⚠️ Le démarrage est refusé si des valeurs placeholder (`CHANGEME_*`) restent dans le `.env`.
 
 ### Étape 2 : Lancement
 ```bash
 ./scripts/start.sh
 ```
-Ou directement :
+Ou directement (les profils sont construits d'après `ENABLED_GATEWAYS` et `COMPOSE_PROFILES`) :
 ```bash
-docker compose -p proxy_docker up -d --build
+docker compose --profile gw1 --profile gw1-all up -d --build
+# 4 passerelles + tous les fournisseurs :
+docker compose --profile gw1 --profile gw2 --profile gw3 --profile gw4 --profile all up -d --build
 ```
 
 Tableau de bord Web : **[http://localhost:8088](http://localhost:8088)** — connexion avec le `DASHBOARD_TOKEN` (page de login).
@@ -202,12 +186,12 @@ Tableau de bord Web : **[http://localhost:8088](http://localhost:8088)** — con
 | [`scripts/azure_cloud_init.sh`](scripts/azure_cloud_init.sh) | Script cloud-init d'installation automatique pour VM Azure Debian 13. |
 | [`scripts/digitalocean_cloud_init.sh`](scripts/digitalocean_cloud_init.sh) | Script cloud-init pour DigitalOcean Droplet. |
 | [`scripts/vultr_cloud_init.sh`](scripts/vultr_cloud_init.sh) | Script cloud-init pour Vultr Cloud Compute. |
-| [`scripts/rotate_ip.sh`](scripts/rotate_ip.sh) | Déclenche une rotation manuelle immédiate de la session résidentielle. |
+| [`scripts/rotate_ip.sh`](scripts/rotate_ip.sh) | Déclenche une rotation manuelle immédiate de la session résidentielle. Usage : `./scripts/rotate_ip.sh [gateway]` (défaut : toutes les passerelles actives). |
 | [`scripts/rotate_env.sh`](scripts/rotate_env.sh) | **Rotation de tous les secrets** du `.env` (génère de nouvelles valeurs + guide). |
-| [`scripts/status.sh`](scripts/status.sh) | Affiche l'état complet des conteneurs, le statut de la passerelle et la géolocalisation de l'IP. |
-| [`scripts/switch_isp_proxy.sh`](scripts/switch_isp_proxy.sh) | Bascule à chaud le proxy amont : `./scripts/switch_isp_proxy.sh <HOST:PORT[:USER:PASS]> [socks5|http]`. |
-| [`scripts/switch_provider.sh`](scripts/switch_provider.sh) | Bascule le fournisseur de monétisation actif (`none` = aucun provider, passerelle + dashboard seuls). |
-| [`scripts/test_proxy.sh`](scripts/test_proxy.sh) | Teste la connectivité du proxy amont (via le conteneur gateway-isp par défaut). |
+| [`scripts/status.sh`](scripts/status.sh) | Affiche l'état complet des conteneurs, le statut de **chaque passerelle** et la géolocalisation de chaque IP. |
+| [`scripts/switch_isp_proxy.sh`](scripts/switch_isp_proxy.sh) | Bascule à chaud le proxy amont d'une passerelle : `./scripts/switch_isp_proxy.sh <HOST:PORT[:USER:PASS]> [socks5|http] [gateway]` (défaut gateway 1). |
+| [`scripts/switch_provider.sh`](scripts/switch_provider.sh) | Bascule le fournisseur de monétisation actif (`none` = aucun provider) sur **toutes les passerelles actives**. |
+| [`scripts/test_proxy.sh`](scripts/test_proxy.sh) | Teste la connectivité du proxy amont (via le conteneur gateway-isp-{n} par défaut, `[gateway]` en 3e argument). |
 | [`scripts/benchmark.sh`](scripts/benchmark.sh) | Lance un benchmark en temps réel mesurant la RAM, le CPU et les PIDs de la stack. |
 
 ---
@@ -236,4 +220,5 @@ Dans votre dépôt GitHub (***Settings ➔ Secrets and variables ➔ Actions***)
 
 * 📄 [Évaluation Déploiement Stack Docker sur Azure](docs/Recherches/Évaluation_Stack_Docker_sur_Azure.md) : Analyse Hyper-V, TUN/TAP, dimensionnement VM série B, quotas de bande passante et sécurité.
 * 📄 [Guide d'Intégration Passerelle ISP / Static Residential](docs/Integration_Passerelle_ISP_Residential.md) : Comparatif des fournisseurs de proxys et guide d'optimisation.
+* 📄 [Multi-Passerelles : 4 Pools d'IP](docs/Multi_Gateways_4_Proxies.md) : Dimensionnement, déploiement multi-proxys, profils compose et migration.
 * 📄 [Rapport de Recherche sur le Routage Docker](docs/Recherches/Routage_Docker_Monétisation_Bande_Passante.md) : Analyse des solutions Dongle 4G, VPN Dédiés et Proxies ISP.

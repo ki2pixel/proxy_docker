@@ -75,12 +75,12 @@
     <!-- Main Content Area -->
     <main class="main-content">
       
-      <!-- Top Grid: Hero IP & Quick Actions -->
+      <!-- Top Grid: Global Summary & Quick Actions -->
       <section class="top-grid">
-        <!-- Hero IP Card -->
+        <!-- Global Summary Card -->
         <div class="glass-card hero-ip-card">
           <div class="card-head">
-            <span class="card-tag">ADRESSE IP PUBLIQUE ISP ACTIVE</span>
+            <span class="card-tag">HUB MULTI-PASSERELLES ISP</span>
             <span class="badge-shield">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
               Zéro Fuite IP Locale
@@ -96,21 +96,9 @@
             </div>
 
             <div class="ip-tags-row">
-              <div class="meta-tag" id="tag-country">
-                <span class="flag-icon" id="hero-flag">🌐</span>
-                <span id="hero-country">--</span>
-              </div>
-              <div class="meta-tag" id="tag-city">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="10" r="3"/><path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 1 0-16 0c0 3 2.7 7 8 11.7z"/></svg>
-                <span id="hero-city">--</span>
-              </div>
-              <div class="meta-tag" id="tag-isp">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
-                <span id="hero-isp">--</span>
-              </div>
               <div class="meta-tag" id="tag-proxy">
                 <span class="dot-blue"></span>
-                <span id="hero-proxy-target">Proxy : --</span>
+                <span id="hero-proxy-target">Proxies : --</span>
               </div>
             </div>
           </div>
@@ -118,11 +106,11 @@
           <div class="hero-actions">
             <button class="btn btn-primary" id="btn-quick-refresh">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-              Rafraîchir l'IP
+              Rafraîchir les passerelles
             </button>
             <button class="btn btn-secondary" id="btn-rotate-ip">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-              Changer d'IP (Rotation)
+              Rotation (Passerelle 1)
             </button>
           </div>
         </div>
@@ -130,20 +118,20 @@
         <!-- Quick Summary Stats Card -->
         <div class="glass-card stats-card">
           <div class="card-head">
-            <span class="card-tag">ÉTAT DU HUB & PASSERELLE</span>
+            <span class="card-tag">ÉTAT DU HUB & PASSERELLES</span>
           </div>
 
           <div class="stats-grid">
             <div class="stat-box">
-              <div class="stat-number text-emerald" id="stat-gateway-status">Active</div>
-              <div class="stat-label">Statut Passerelle ISP</div>
+              <div class="stat-number text-emerald" id="stat-gateway-status">0/0</div>
+              <div class="stat-label">Passerelles Actives</div>
             </div>
             <div class="stat-box">
               <div class="stat-number text-cyan" id="stat-latency">-- ms</div>
-              <div class="stat-label">Latence Passerelle</div>
+              <div class="stat-label">Latence Min Passerelle</div>
             </div>
             <div class="stat-box">
-              <div class="stat-number" id="stat-active-nodes">0 / 5</div>
+              <div class="stat-number" id="stat-active-nodes">0 / 0</div>
               <div class="stat-label">Nœuds Monétisation Actifs</div>
             </div>
             <div class="stat-box">
@@ -155,25 +143,25 @@
           <div class="trial-banner">
             <span class="sparkle-icon">🛡️</span>
             <div class="trial-text">
-              <strong>Passerelle Résidentielle Dédiée</strong>
-              <p>Trafic Docker 100% encapsulé via tunnel L3 tun2socks & DoH chiffré.</p>
+              <strong>Pools d'IP Résidentiels Dédiés</strong>
+              <p>Chaque passerelle a son propre tunnel L3 tun2socks & DoH chiffré, avec son quota de connexions.</p>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- Monetization Nodes Section -->
+      <!-- Gateways & Monetization Nodes Section -->
       <section class="section-container">
         <div class="section-head">
           <div class="section-title-group">
-            <h3>Nœuds de Monétisation Docker</h3>
-            <p>Applications acheminées à 100% à travers la passerelle ISP</p>
+            <h3>Passerelles & Nœuds de Monétisation</h3>
+            <p>Chaque passerelle route ses nœuds à 100% via son proxy ISP dédié</p>
           </div>
           <button class="btn btn-secondary btn-sm" id="btn-restart-all-nodes">Redémarrer Tous les Nœuds</button>
         </div>
 
         <div class="nodes-grid" id="nodes-grid">
-          <!-- Populated by JS -->
+          <!-- Populated by JS (cartes passerelles + leurs providers) -->
           <div class="skeleton-card"></div>
           <div class="skeleton-card"></div>
           <div class="skeleton-card"></div>
@@ -206,14 +194,11 @@
         <div class="section-head">
           <div class="section-title-group">
             <h3>Console & Logs en Temps Réel</h3>
-            <p>Flux d'exécution des conteneurs et de la passerelle</p>
+            <p>Flux d'exécution des conteneurs et des passerelles</p>
           </div>
           <div class="log-tabs" id="log-tabs">
+            <!-- Construit dynamiquement par app.js (rebuildLogTabs) -->
             <button class="tab-btn active" data-target="system">Système / Hub</button>
-            <button class="tab-btn" data-target="gateway-isp">gateway-isp</button>
-            <button class="tab-btn" data-target="repocket">repocket</button>
-            <button class="tab-btn" data-target="honeygain">honeygain</button>
-            <button class="tab-btn" data-target="proxyrack-pop">proxyrack</button>
           </div>
         </div>
 

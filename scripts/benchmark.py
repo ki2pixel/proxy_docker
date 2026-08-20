@@ -147,8 +147,13 @@ def run_benchmark(duration_sec=45, interval_sec=1.0, render_ram_mb=512.0, render
     print(f"⚙️  Plafonds Render.com comparés : RAM = {render_ram_mb} MiB | CPU = {render_cpu_share}% (0.1 vCPU)\n")
     
     known_project_containers = {
-        "gateway-isp", "isp-dashboard", "proxyrack-pop", 
-        "honeygain", "packetstream", "pawns", "repocket"
+        "gateway-isp-1", "gateway-isp-2", "gateway-isp-3", "gateway-isp-4",
+        "isp-dashboard",
+        "proxyrack-1", "proxyrack-2", "proxyrack-3", "proxyrack-4",
+        "honeygain-1", "honeygain-2", "honeygain-3", "honeygain-4",
+        "packetstream-1", "packetstream-2", "packetstream-3", "packetstream-4",
+        "pawns-1", "pawns-2", "pawns-3", "pawns-4",
+        "repocket-1", "repocket-2", "repocket-3", "repocket-4"
     }
 
     try:

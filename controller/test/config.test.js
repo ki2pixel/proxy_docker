@@ -17,6 +17,30 @@ test('les clés de mot de passe/API sont sensibles', () => {
   assert.ok(isSensitiveKey('UUID'));
 });
 
+test('les clés préfixées GW{n}_ sont sensibles quand secrètes', () => {
+  assert.ok(isSensitiveKey('GW1_ISP_PROXY_PASS'));
+  assert.ok(isSensitiveKey('GW2_HONEYGAIN_PASSWORD'));
+  assert.ok(isSensitiveKey('GW3_PAWNS_PASSWORD'));
+  assert.ok(isSensitiveKey('GW4_REPOCKET_API_KEY'));
+  assert.ok(isSensitiveKey('GW1_API_KEY'));
+  assert.ok(isSensitiveKey('GW2_UUID'));
+  assert.ok(!isSensitiveKey('GW1_ISP_PROXY_HOST'));
+  assert.ok(!isSensitiveKey('GW2_HONEYGAIN_EMAIL'));
+});
+
+test('le schéma CONFIG_KEYS couvre les 4 passerelles et le global', () => {
+  for (const n of [1, 2, 3, 4]) {
+    assert.ok(isKnownConfigKey(`GW${n}_ISP_PROXY_HOST`), `GW${n}_ISP_PROXY_HOST manquante`);
+    assert.ok(isKnownConfigKey(`GW${n}_PAWNS_EMAIL`), `GW${n}_PAWNS_EMAIL manquante`);
+    assert.ok(isKnownConfigKey(`GW${n}_REPOCKET_API_KEY`), `GW${n}_REPOCKET_API_KEY manquante`);
+  }
+  assert.ok(isKnownConfigKey('ENABLED_GATEWAYS'));
+  assert.ok(isKnownConfigKey('GATEWAY_LOGLEVEL'));
+  // Légacy conservé pour la migration
+  assert.ok(isKnownConfigKey('ISP_PROXY_HOST'));
+  assert.ok(isKnownConfigKey('PAWNS_EMAIL'));
+});
+
 test('les clés non secrètes ne sont pas sensibles', () => {
   assert.ok(!isSensitiveKey('ISP_PROXY_HOST'));
   assert.ok(!isSensitiveKey('ISP_PROXY_PORT'));

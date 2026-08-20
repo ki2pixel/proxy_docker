@@ -7,7 +7,7 @@ source "$DIR/lib.sh"
 cd "$PROJECT_ROOT"
 
 echo "========================================================"
-echo " Démarrage de la Passerelle Dédiée ISP / Residential"
+echo " Démarrage des Passerelles Dédiées ISP / Residential"
 echo "========================================================"
 
 if [ ! -f .env ]; then
@@ -25,30 +25,33 @@ if grep -qE "CHANGEME_|votre_" .env; then
 fi
 
 # Lecture des variables via la bibliothèque
-PROXY_HOST=$(get_env ISP_PROXY_HOST)
-PROXY_PORT=$(get_env ISP_PROXY_PORT)
-PROXY_PROTO=$(get_env ISP_PROXY_PROTOCOL "socks5")
+GATEWAYS=$(get_enabled_gateways)
 PROFILES=$(get_env COMPOSE_PROFILES "repocket")
 PORT=$(get_env DASHBOARD_PORT "8088")
+COMPOSE_ARGS=$(compose_profiles_args)
 
-echo "[*] Proxy ISP Configuré   : ${PROXY_PROTO:-socks5}://${PROXY_HOST:-non défini}:${PROXY_PORT:-non défini}"
-echo "[*] Profil(s) Actif(s)    : $PROFILES"
-echo "[*] Dashboard Web         : http://localhost:${PORT} (tunnel SSH requis si distant)"
+echo "[*] Passerelles actives     : $GATEWAYS"
+echo "[*] Profil(s) Actif(s)      : $PROFILES"
+echo "[*] Dashboard Web           : http://localhost:${PORT} (tunnel SSH requis si distant)"
 echo "[*] Construction et démarrage des conteneurs..."
+echo "[*] Profils compose         :$COMPOSE_ARGS"
 
-docker compose -p "$PROJECT_NAME" up -d --build
+# shellcheck disable=SC2086
+docker compose -p "$PROJECT_NAME" $COMPOSE_ARGS up -d --build
 
 echo ""
-echo "[*] Attente de la stabilisation du tunnel passerelle (healthcheck)..."
+echo "[*] Attente de la stabilisation des tunnels passerelles (healthcheck)..."
 sleep 5
 
-# Check health
-if docker exec gateway-isp /usr/local/bin/healthcheck.sh 2>/dev/null; then
+# Check health de chaque passerelle active
+for G in $GATEWAYS; do
+  if docker exec "gateway-isp-$G" /usr/local/bin/healthcheck.sh 2>/dev/null; then
     echo ""
-    echo "[✓] Déploiement ISP réussi et validé !"
-else
-    echo "[-] Avertissement : Le tunnel n'a pas encore validé le healthcheck."
-fi
+    echo "[✓] Passerelle gateway-isp-$G : déploiement validé !"
+  else
+    echo "[-] Avertissement : le tunnel gateway-isp-$G n'a pas encore validé le healthcheck."
+  fi
+done
 
 echo ""
 echo "[*] Commandes utiles :"

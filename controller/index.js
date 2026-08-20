@@ -146,27 +146,49 @@ function requireCsrf(req, res, next) {
 }
 
 // -----------------------------------------------------------------------------
-// Global In-Memory State & Cache
+// Global In-Memory State & Cache (multi-passerelles)
 // -----------------------------------------------------------------------------
+function newGatewayState(num) {
+  return {
+    num,
+    status: 'UNKNOWN',
+    currentIP: null,
+    currentLocation: null,
+    ispInfo: null,
+    latencyMs: null,
+    activeProxy: { host: '', port: '', protocol: 'socks5' },
+    consecutiveFailures: 0,
+    lastRotationAt: 0,
+    ipFetchInFlight: false
+  };
+}
+
+// Passerelles supportées : GW1_..GW4_ (numéros définis dans lib.js)
+const GATEWAY_STATES = new Map([1, 2, 3, 4].map(n => [`gw${n}`, newGatewayState(n)]));
+
+// State global (logs + divers)
 const state = {
-  currentIP: null,
-  currentLocation: null,
-  ispInfo: null,
-  latencyMs: null,
-  gatewayStatus: 'UNKNOWN',
-  activeProxy: {
-    host: process.env.ISP_PROXY_HOST || '',
-    port: process.env.ISP_PROXY_PORT || '',
-    protocol: process.env.ISP_PROXY_PROTOCOL || 'socks5'
-  },
-  logs: [],
-  consecutiveFailures: 0,
-  lastRotationAt: 0,
-  ipFetchInFlight: false
+  logs: []
 };
 
 const sseClients = new Set();
 const MAX_SSE_CLIENTS = 20;
+
+// -----------------------------------------------------------------------------
+// Lecture des clés .env d'une passerelle (avec fallback legacy pour gw1)
+// -----------------------------------------------------------------------------
+function readGatewayEnv(num, env = null) {
+  const e = env || readEnvFile();
+  const p = `GW${num}_`;
+  const pick = (key, legacy = '') => e[`${p}${key}`] ?? e[legacy] ?? '';
+  return {
+    protocol: pick('ISP_PROXY_PROTOCOL', 'ISP_PROXY_PROTOCOL') || 'socks5',
+    host: pick('ISP_PROXY_HOST', 'ISP_PROXY_HOST'),
+    port: pick('ISP_PROXY_PORT', 'ISP_PROXY_PORT'),
+    user: pick('ISP_PROXY_USER', 'ISP_PROXY_USER'),
+    pass: pick('ISP_PROXY_PASS', 'ISP_PROXY_PASS')
+  };
+}
 
 function log(msg, level = 'INFO') {
   const timestamp = new Date().toISOString();
@@ -365,15 +387,45 @@ class DockerClient {
 const docker = new DockerClient();
 
 // -----------------------------------------------------------------------------
-// Provider Metadata
+// Provider Metadata (types de nœuds de monétisation, sans instance)
 // -----------------------------------------------------------------------------
-const PROVIDERS = [
-  { id: 'repocket', name: 'Repocket', container: 'repocket', icon: '⚡', dashboard: 'https://app.repocket.com' },
-  { id: 'honeygain', name: 'Honeygain', container: 'honeygain', icon: '🍯', dashboard: 'https://dashboard.honeygain.com' },
-  { id: 'pawns', name: 'Pawns.app', container: 'pawns', icon: '♟️', dashboard: 'https://pawns.app' },
-  { id: 'packetstream', name: 'PacketStream', container: 'packetstream', icon: '📦', dashboard: 'https://packetstream.io' },
-  { id: 'proxyrack', name: 'Proxyrack PoP', container: 'proxyrack-pop', icon: '🌐', dashboard: 'https://peer.proxyrack.com' }
+const PROVIDER_TYPES = [
+  { id: 'repocket', name: 'Repocket', base: 'repocket', icon: '⚡', dashboard: 'https://app.repocket.com' },
+  { id: 'honeygain', name: 'Honeygain', base: 'honeygain', icon: '🍯', dashboard: 'https://dashboard.honeygain.com' },
+  { id: 'pawns', name: 'Pawns.app', base: 'pawns', icon: '♟️', dashboard: 'https://pawns.app' },
+  { id: 'packetstream', name: 'PacketStream', base: 'packetstream', icon: '📦', dashboard: 'https://packetstream.io' },
+  { id: 'proxyrack', name: 'Proxyrack PoP', base: 'proxyrack', icon: '🌐', dashboard: 'https://peer.proxyrack.com' }
 ];
+
+// -----------------------------------------------------------------------------
+// Passerelles : métadonnées dérivées des numéros supportés
+// -----------------------------------------------------------------------------
+const GATEWAY_NUMS = [1, 2, 3, 4];
+const GATEWAYS = GATEWAY_NUMS.map(n => ({
+  id: `gw${n}`,
+  num: n,
+  container: `gateway-isp-${n}`,
+  envPrefix: `GW${n}_`,
+  providers: PROVIDER_TYPES.map(pt => ({
+    ...pt,
+    container: `${pt.base}-${n}`,
+    profile: `gw${n}-${pt.id}`
+  }))
+}));
+
+function getGateway(gwId) {
+  return GATEWAYS.find(g => g.id === gwId) || null;
+}
+
+// Passerelles "actives" : celles dont le conteneur gateway existe (running ou non)
+// et dont une config proxy est présente dans le .env
+function getActiveGateways(env = null) {
+  const e = env || readEnvFile();
+  return GATEWAYS.filter(g => {
+    const cfg = readGatewayEnv(g.num, e);
+    return Boolean(cfg.host) || g.num === 1; // gw1 toujours listé (fallback legacy)
+  });
+}
 
 // -----------------------------------------------------------------------------
 // Helper: Lecture / Écriture du fichier .env
@@ -407,48 +459,49 @@ async function composeUp(serviceId) {
   ], { timeout: 120_000 });
 }
 
-async function composeRestartGateway() {
+async function composeRestartGateway(gw) {
   await execFileAsync('docker', [
     'compose', '-p', PROJECT_NAME, '-f', COMPOSE_FILE,
-    'restart', 'gateway-isp'
+    'restart', gw.container
   ], { timeout: 120_000 });
 }
 
 // -----------------------------------------------------------------------------
-// Helper: Fetch Current IP through gateway-isp (via docker exec ou socket API)
+// Helper: Fetch Current IP through gateway-isp-{n} (via docker exec ou socket API)
 // -----------------------------------------------------------------------------
-async function fetchCurrentGatewayIP() {
-  if (state.ipFetchInFlight) return;
-  state.ipFetchInFlight = true;
+async function fetchCurrentGatewayIP(gw) {
+  const gstate = GATEWAY_STATES.get(gw.id);
+  if (!gstate) return;
+  if (gstate.ipFetchInFlight) return;
+  gstate.ipFetchInFlight = true;
   try {
     const start = Date.now();
     let stdout = '';
 
     // Relire le .env pour garder la cohérence du proxy affiché
     const env = readEnvFile();
-    if (env.ISP_PROXY_HOST) {
-      state.activeProxy = {
-        host: env.ISP_PROXY_HOST,
-        port: env.ISP_PROXY_PORT || '',
-        protocol: env.ISP_PROXY_PROTOCOL || 'socks5'
-      };
-    }
+    const cfg = readGatewayEnv(gw.num, env);
+    gstate.activeProxy = {
+      host: cfg.host,
+      port: cfg.port,
+      protocol: cfg.protocol
+    };
 
-    // 1. Exécution curl dans gateway-isp via Docker CLI
+    // 1. Exécution curl dans gateway-isp-{n} via Docker CLI
     try {
       const res = await execFileAsync('docker', [
-        'exec', 'gateway-isp', 'curl', '-s', '-k', '--max-time', '6',
+        'exec', gw.container, 'curl', '-s', '-k', '--max-time', '6',
         'https://ipinfo.io/json'
       ], { timeout: 10_000 });
       stdout = res.stdout;
     } catch {
       // 2. Fallback via Docker Socket API (exec)
       try {
-        stdout = await docker.execInContainer('gateway-isp', [
+        stdout = await docker.execInContainer(gw.container, [
           'curl', '-s', '-k', '--max-time', '6', 'https://ipinfo.io/json'
         ]);
       } catch (err2) {
-        log(`Health check note: ${err2.message}`, 'DEBUG');
+        log(`Health check note (${gw.id}): ${err2.message}`, 'DEBUG');
       }
     }
 
@@ -456,67 +509,61 @@ async function fetchCurrentGatewayIP() {
     if (stdout && stdout.includes('{')) {
       const jsonStr = stdout.substring(stdout.indexOf('{'), stdout.lastIndexOf('}') + 1);
       const data = JSON.parse(jsonStr);
-      state.currentIP = data.ip || data.query;
-      state.currentLocation = {
+      gstate.currentIP = data.ip || data.query;
+      gstate.currentLocation = {
         city: data.city || 'Inconnu',
         region: data.region || data.regionName || '',
         country: data.country || data.countryCode || 'US',
         loc: data.loc || ''
       };
-      state.ispInfo = {
+      gstate.ispInfo = {
         org: data.org || data.isp || '',
         asn: (data.as || data.org || '').split(' ')[0] || ''
       };
-      state.latencyMs = latency;
-      state.gatewayStatus = 'HEALTHY';
-      state.consecutiveFailures = 0;
+      gstate.latencyMs = latency;
+      gstate.status = 'HEALTHY';
+      gstate.consecutiveFailures = 0;
     } else {
-      state.consecutiveFailures += 1;
-      if (state.consecutiveFailures >= 3) {
-        state.gatewayStatus = 'UNHEALTHY';
+      gstate.consecutiveFailures += 1;
+      if (gstate.consecutiveFailures >= 3) {
+        gstate.status = 'UNHEALTHY';
       }
     }
   } catch (err) {
-    log(`Health check error: ${err.message}`, 'ERROR');
-    state.consecutiveFailures += 1;
-    if (state.consecutiveFailures >= 3) {
-      state.gatewayStatus = 'UNHEALTHY';
+    log(`Health check error (${gw.id}): ${err.message}`, 'ERROR');
+    gstate.consecutiveFailures += 1;
+    if (gstate.consecutiveFailures >= 3) {
+      gstate.status = 'UNHEALTHY';
     }
   } finally {
-    state.ipFetchInFlight = false;
+    gstate.ipFetchInFlight = false;
   }
 }
 
 // -----------------------------------------------------------------------------
-// Helper: Rotation de session (IP) — seule écriture centralisée du .env
+// Helper: Rotation de session (IP) — par passerelle, écriture ciblée du .env
 // -----------------------------------------------------------------------------
-async function rotateSession(reason = 'manuelle') {
-  if (Date.now() - state.lastRotationAt < 15_000) {
+async function rotateSession(gw, reason = 'manuelle') {
+  const gstate = GATEWAY_STATES.get(gw.id);
+  if (Date.now() - gstate.lastRotationAt < 15_000) {
     throw new Error('Rotation trop rapprochée (garde anti-double-rotation)');
   }
-  state.lastRotationAt = Date.now();
-  log(`Rotation de session déclenchée (${reason})...`, 'INFO');
+  gstate.lastRotationAt = Date.now();
+  log(`Rotation de session déclenchée (${gw.id}, ${reason})...`, 'INFO');
 
   const newSession = `live${crypto.randomBytes(4).toString('hex')}`;
   const env = readEnvFile();
-  if (env.ISP_PROXY_USER && env.ISP_PROXY_USER.includes('session-')) {
-    const newUser = env.ISP_PROXY_USER.replace(/session-[a-zA-Z0-9_-]+/g, `session-${newSession}`);
-    updateEnvFile({ ISP_PROXY_USER: newUser });
+  const cfg = readGatewayEnv(gw.num, env);
+  if (cfg.user && cfg.user.includes('session-')) {
+    const newUser = cfg.user.replace(/session-[a-zA-Z0-9_-]+/g, `session-${newSession}`);
+    updateEnvFile({ [`GW${gw.num}_ISP_PROXY_USER`]: newUser });
   }
 
-  await composeRestartGateway();
+  await composeRestartGateway(gw);
   await new Promise(r => setTimeout(r, 3000));
-  await fetchCurrentGatewayIP();
+  await fetchCurrentGatewayIP(gw);
 
-  // Relire le .env pour mettre à jour l'affichage du proxy actif
-  const fresh = readEnvFile();
-  state.activeProxy = {
-    host: fresh.ISP_PROXY_HOST || process.env.ISP_PROXY_HOST || '',
-    port: fresh.ISP_PROXY_PORT || process.env.ISP_PROXY_PORT || '',
-    protocol: fresh.ISP_PROXY_PROTOCOL || process.env.ISP_PROXY_PROTOCOL || 'socks5'
-  };
-
-  return { ip: state.currentIP, location: state.currentLocation };
+  return { ip: gstate.currentIP, location: gstate.currentLocation };
 }
 
 // -----------------------------------------------------------------------------
@@ -594,14 +641,14 @@ app.put('/api/config', requireAuth, requireCsrf, async (req, res) => {
     }
   }
 
-  // Recharger le proxy actif depuis le .env (cohérence du dashboard)
+  // Recharger les proxys actifs depuis le .env (cohérence du dashboard)
   const fresh = readEnvFile();
-  if (fresh.ISP_PROXY_HOST) {
-    state.activeProxy = {
-      host: fresh.ISP_PROXY_HOST,
-      port: fresh.ISP_PROXY_PORT || '',
-      protocol: fresh.ISP_PROXY_PROTOCOL || 'socks5'
-    };
+  for (const gw of GATEWAYS) {
+    const cfg = readGatewayEnv(gw.num, fresh);
+    const gstate = GATEWAY_STATES.get(gw.id);
+    if (cfg.host) {
+      gstate.activeProxy = { host: cfg.host, port: cfg.port, protocol: cfg.protocol };
+    }
   }
 
   res.json({
@@ -611,59 +658,83 @@ app.put('/api/config', requireAuth, requireCsrf, async (req, res) => {
   });
 });
 
-// 1. Status Overview
+// 1. Status Overview (multi-passerelles)
 app.get('/api/status', requireAuth, async (req, res) => {
-  await fetchCurrentGatewayIP();
-  const containers = await docker.listContainers();
+  const env = readEnvFile();
+  const activeGateways = getActiveGateways(env);
 
-  const providerStatuses = PROVIDERS.map(p => {
-    const matched = containers.find(c => (c.Names || []).some(n => n.includes(p.container)));
+  // Fetch IP de chaque passerelle active (en parallèle, non bloquant)
+  await Promise.allSettled(activeGateways.map(gw => fetchCurrentGatewayIP(gw)));
+
+  const containers = await docker.listContainers();
+  const nameSet = new Set((containers || []).flatMap(c => c.Names || []));
+
+  const gateways = activeGateways.map(gw => {
+    const gstate = GATEWAY_STATES.get(gw.id);
+    const providers = gw.providers.map(p => {
+      const matched = nameSet.has(`/${p.container}`);
+      const container = (containers || []).find(c => (c.Names || []).includes(`/${p.container}`));
+      return {
+        ...p,
+        status: matched ? (container ? container.State : 'stopped') : 'stopped',
+        statusDetail: matched ? (container ? container.Status : 'Exited / Stopped') : 'Exited / Stopped',
+        running: matched && container ? container.State === 'running' : false,
+        containerId: matched && container ? container.Id : null
+      };
+    });
     return {
-      ...p,
-      status: matched ? matched.State : 'stopped',
-      statusDetail: matched ? matched.Status : 'Exited / Stopped',
-      running: matched ? matched.State === 'running' : false,
-      containerId: matched ? matched.Id : null
+      id: gw.id,
+      num: gw.num,
+      container: gw.container,
+      ip: gstate.currentIP,
+      location: gstate.currentLocation,
+      isp: gstate.ispInfo,
+      latencyMs: gstate.latencyMs,
+      status: gstate.status,
+      activeProxy: gstate.activeProxy,
+      providers
     };
   });
 
-  res.json({
-    ip: state.currentIP,
-    location: state.currentLocation,
-    isp: state.ispInfo,
-    latencyMs: state.latencyMs,
-    gatewayStatus: state.gatewayStatus,
-    activeProxy: state.activeProxy,
-    providers: providerStatuses
-  });
+  // Résumé global
+  const summary = {
+    gatewaysTotal: activeGateways.length,
+    gatewaysHealthy: gateways.filter(g => g.status === 'HEALTHY').length,
+    nodesRunning: gateways.reduce((acc, g) => acc + g.providers.filter(p => p.running).length, 0),
+    nodesTotal: gateways.reduce((acc, g) => acc + g.providers.length, 0)
+  };
+
+  res.json({ gateways, summary });
 });
 
-// 2. Provider Action (Start/Stop/Restart)
-app.post('/api/providers/:id/:action', requireAuth, requireCsrf, async (req, res) => {
-  const { id, action } = req.params;
-  const provider = PROVIDERS.find(p => p.id === id);
+// 2. Provider Action (Start/Stop/Restart) — scope par passerelle
+app.post('/api/gateways/:gwId/providers/:id/:action', requireAuth, requireCsrf, async (req, res) => {
+  const { gwId, id, action } = req.params;
+  const gw = getGateway(gwId);
+  if (!gw) return res.status(404).json({ error: 'Gateway not found' });
+  const provider = gw.providers.find(p => p.id === id);
   if (!provider) return res.status(404).json({ error: 'Provider not found' });
   if (!ALLOWED_ACTIONS.has(action)) return res.status(400).json({ error: 'Action invalide' });
 
   try {
     const containers = await docker.listContainers();
-    const matched = containers.find(c => (c.Names || []).some(n => n.includes(provider.container)));
+    const matched = (containers || []).find(c => (c.Names || []).includes(`/${provider.container}`));
 
     if (action === 'restart') {
       if (matched && matched.State === 'running') {
         await docker.restartContainer(matched.Id);
       } else {
-        await composeUp(id);
+        await composeUp(provider.container);
       }
     } else if (action === 'start') {
       if (matched && matched.State !== 'running') {
         try {
           await docker.startContainer(matched.Id);
         } catch {
-          await composeUp(id);
+          await composeUp(provider.container);
         }
       } else {
-        await composeUp(id);
+        await composeUp(provider.container);
       }
     } else if (action === 'stop') {
       if (matched) {
@@ -671,7 +742,7 @@ app.post('/api/providers/:id/:action', requireAuth, requireCsrf, async (req, res
       }
     }
 
-    log(`Provider action: ${provider.name} -> ${action}`, 'INFO');
+    log(`Provider action: ${provider.name} (${gw.id}) -> ${action}`, 'INFO');
     res.json({ success: true, message: `${provider.name} ${action}ed successfully.` });
   } catch (err) {
     log(`Provider action error: ${err.message}`, 'ERROR');
@@ -679,18 +750,41 @@ app.post('/api/providers/:id/:action', requireAuth, requireCsrf, async (req, res
   }
 });
 
-// 2b. Proxy IP Rotation Trigger
+// 2b. Proxy IP Rotation Trigger (par passerelle, défaut gw1)
 app.post('/api/proxy/rotate', requireAuth, requireCsrf, async (req, res) => {
+  const gwId = (req.body && req.body.gateway) || 'gw1';
+  const gw = getGateway(gwId);
+  if (!gw) return res.status(404).json({ error: 'Gateway not found' });
   try {
-    const { ip, location } = await rotateSession('manuelle (dashboard)');
+    const { ip, location } = await rotateSession(gw, 'manuelle (dashboard)');
     res.json({
       success: true,
-      message: `IP tournée avec succès : ${ip}`,
+      message: `IP tournée avec succès (${gw.id}) : ${ip}`,
       ip,
-      location
+      location,
+      gateway: gw.id
     });
   } catch (err) {
-    log(`Rotation error: ${err.message}`, 'ERROR');
+    log(`Rotation error (${gw.id}): ${err.message}`, 'ERROR');
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2c. Rotation explicite par passerelle
+app.post('/api/gateways/:gwId/rotate', requireAuth, requireCsrf, async (req, res) => {
+  const gw = getGateway(req.params.gwId);
+  if (!gw) return res.status(404).json({ error: 'Gateway not found' });
+  try {
+    const { ip, location } = await rotateSession(gw, 'manuelle (dashboard)');
+    res.json({
+      success: true,
+      message: `IP tournée avec succès (${gw.id}) : ${ip}`,
+      ip,
+      location,
+      gateway: gw.id
+    });
+  } catch (err) {
+    log(`Rotation error (${gw.id}): ${err.message}`, 'ERROR');
     res.status(500).json({ error: err.message });
   }
 });
@@ -754,36 +848,46 @@ async function init() {
   log('Starting ISP Gateway Controller & Web Dashboard...', 'INFO');
 
   const env = readEnvFile();
-  if (env.ISP_PROXY_HOST) {
-    state.activeProxy = {
-      host: env.ISP_PROXY_HOST,
-      port: env.ISP_PROXY_PORT || '',
-      protocol: env.ISP_PROXY_PROTOCOL || 'socks5'
-    };
-  }
+  const activeGateways = getActiveGateways(env);
 
-  await fetchCurrentGatewayIP();
+  // Initialiser les états (proxys affichés) + premier fetch par passerelle
+  for (const gw of activeGateways) {
+    const cfg = readGatewayEnv(gw.num, env);
+    const gstate = GATEWAY_STATES.get(gw.id);
+    gstate.activeProxy = { host: cfg.host, port: cfg.port, protocol: cfg.protocol };
+  }
+  await Promise.allSettled(activeGateways.map(gw => fetchCurrentGatewayIP(gw)));
 
   app.listen(PORT, '0.0.0.0', () => {
     log(`ISP Web Dashboard ready on port ${PORT}`, 'INFO');
   });
 
-  setInterval(fetchCurrentGatewayIP, 30_000);
+  // Rafraîchissement périodique de toutes les passerelles actives
+  setInterval(() => {
+    const fresh = readEnvFile();
+    Promise.allSettled(getActiveGateways(fresh).map(gw => fetchCurrentGatewayIP(gw)));
+  }, 30_000);
 
-  // Rotation préventive centralisée (uniquement pour les proxys à session résidentielle
-  // de type "session-...". Sans session- dans ISP_PROXY_USER, aucune rotation : un proxy
-  // classique HOST:PORT:USER:PASS n'a pas besoin d'être redémarré périodiquement.)
-  const proxyUser = readEnvFile().ISP_PROXY_USER || '';
-  if (AUTO_ROTATE_SESSION && AUTO_ROTATE_INTERVAL > 0 && proxyUser.includes('session-')) {
-    const intervalMs = AUTO_ROTATE_INTERVAL * 60_000;
-    log(`Rotation préventive de session toutes les ${AUTO_ROTATE_INTERVAL} min (controller)`, 'INFO');
+  // Rotation préventive centralisée, PAR passerelle active (uniquement pour les
+  // proxys à session résidentielle "session-...". Sans session- dans GW{n}_ISP_PROXY_USER,
+  // aucune rotation : un proxy classique HOST:PORT:USER:PASS n'a pas besoin de redémarrage
+  // périodique.)
+  const intervalMs = AUTO_ROTATE_INTERVAL * 60_000;
+  if (AUTO_ROTATE_SESSION && AUTO_ROTATE_INTERVAL > 0) {
     setInterval(() => {
-      rotateSession('préventive (controller)').catch(err => {
-        log(`Rotation préventive échouée: ${err.message}`, 'ERROR');
-      });
+      const fresh = readEnvFile();
+      for (const gw of getActiveGateways(fresh)) {
+        const cfg = readGatewayEnv(gw.num, fresh);
+        if (cfg.user && cfg.user.includes('session-')) {
+          rotateSession(gw, 'préventive (controller)').catch(err => {
+            log(`Rotation préventive échouée (${gw.id}): ${err.message}`, 'ERROR');
+          });
+        }
+      }
     }, intervalMs);
+    log(`Rotation préventive de session toutes les ${AUTO_ROTATE_INTERVAL} min (controller, par passerelle)`, 'INFO');
   } else {
-    log('Rotation préventive désactivée : proxy sans session résidentielle (schéma classique)', 'INFO');
+    log('Rotation préventive désactivée : AUTO_ROTATE_SESSION=false ou intervalle nul', 'INFO');
   }
 
   // Signal handling
