@@ -41,8 +41,9 @@ jobs:
 
             cd "$APP_DIR"
 
-            echo "📥 [Deploy] Récupération de la dernière version (Git Pull)..."
-            git pull origin main
+            echo "📥 [Deploy] Récupération de la dernière version (Git Fetch + Reset)..."
+            git fetch origin main
+            git reset --hard origin/main
 
             echo "🔍 [Deploy] Validation de la configuration compose..."
             docker compose config --quiet
