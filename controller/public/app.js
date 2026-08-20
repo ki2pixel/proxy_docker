@@ -159,6 +159,9 @@ async function fetchStatus() {
   }
 }
 
+// Cache DOM des cartes passerelles : construit une fois, patché ensuite
+let renderedGwSignature = '';
+
 function renderStatus(data) {
   const gateways = data.gateways || [];
   const summary = data.summary || {};
@@ -208,8 +211,62 @@ function renderStatus(data) {
     statProtocolEl.innerText = proto.toUpperCase();
   }
 
-  // --- Grille de cartes passerelles ---
-  renderGateways(gateways);
+  // --- Grille de cartes passerelles (construction unique + patch) ---
+  const signature = gateways.map(g => `${g.id}:${g.providers.map(p => p.container).join(',')}`).join('|');
+  if (signature !== renderedGwSignature) {
+    renderGateways(gateways);
+    renderedGwSignature = signature;
+  } else {
+    patchGateways(gateways);
+  }
+}
+
+// Mise à jour ciblée des valeurs des cartes existantes (sans reconstruction DOM)
+function patchGateways(gateways) {
+  gateways.forEach(gw => {
+    const card = nodesGridEl.querySelector(`[data-gw-id="${gw.id}"]`);
+    if (!card) return;
+
+    const isHealthy = gw.status === 'HEALTHY';
+
+    // Badge statut
+    const badge = card.querySelector('.node-status-badge');
+    if (badge) {
+      badge.className = `node-status-badge ${isHealthy ? 'running' : 'stopped'}`;
+      badge.textContent = isHealthy ? 'Active' : (gw.status === 'UNKNOWN' ? 'En attente' : 'Hors ligne');
+    }
+
+    // IP
+    const ipEl = card.querySelector('.gw-ip');
+    if (ipEl) {
+      ipEl.textContent = gw.ip || (isHealthy ? 'Détection...' : 'Indisponible');
+    }
+
+    // Meta (pays/ville/ISP)
+    const meta = card.querySelector('.gw-meta');
+    if (meta) {
+      const loc = gw.location || {};
+      meta.textContent = `${getFlagEmoji(loc.country)} ${loc.country || '--'} · ${loc.city || '--'}${gw.isp?.org ? ' · ' + gw.isp.org : ''}`;
+    }
+
+    // Latence
+    const latCode = card.querySelector('.gw-latency code');
+    if (latCode) latCode.textContent = `${gw.latencyMs} ms`;
+
+    // Providers
+    (gw.providers || []).forEach(p => {
+      const pCard = card.querySelector(`[data-provider-id="${p.id}"]`);
+      if (!pCard) return;
+      const isRunning = p.running;
+      const badge = pCard.querySelector('.node-status-badge');
+      if (badge) {
+        badge.className = `node-status-badge ${isRunning ? 'running' : 'stopped'}`;
+        badge.textContent = isRunning ? 'Actif & Routé' : 'Arrêté';
+      }
+      const containerCode = pCard.querySelector('.node-info code');
+      if (containerCode) containerCode.textContent = p.container;
+    });
+  });
 }
 
 // -----------------------------------------------------------------------------
@@ -228,6 +285,7 @@ function renderGateways(gateways) {
   gateways.forEach(gw => {
     const card = document.createElement('div');
     card.className = 'gateway-card glass-card';
+    card.dataset.gwId = gw.id;
 
     // En-tête passerelle
     const head = document.createElement('div');
@@ -281,6 +339,7 @@ function renderGateways(gateways) {
 
     if (typeof gw.latencyMs === 'number') {
       const latLine = document.createElement('div');
+      latLine.className = 'gw-latency';
       latLine.append('Latence : ');
       const latCode = document.createElement('code');
       latCode.textContent = `${gw.latencyMs} ms`;
@@ -318,6 +377,7 @@ function renderGateways(gateways) {
 function renderProviderCard(p, gwId) {
   const card = document.createElement('div');
   card.className = 'node-card glass-card';
+  card.dataset.providerId = p.id;
 
   const head = document.createElement('div');
   head.className = 'node-head';
