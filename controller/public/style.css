@@ -662,9 +662,29 @@ body {
 .log-tabs {
   display: flex;
   gap: 8px;
+  /* 21 onglets (system + 4 gateways + 16 providers) : scroll horizontal discret */
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.log-tabs::-webkit-scrollbar {
+  height: 6px;
+}
+
+.log-tabs::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.log-tabs::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .tab-btn {
+  flex-shrink: 0;
   padding: 6px 14px;
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.05);

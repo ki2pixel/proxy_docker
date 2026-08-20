@@ -762,28 +762,35 @@ function appendLogLine(line) {
   if (nearBottom) terminalBodyEl.scrollTop = terminalBodyEl.scrollHeight;
 }
 
-async function fetchContainerLogs(name) {
-  terminalBodyEl.innerHTML = `<div class="log-line">[LOGS] Récupération des logs du conteneur ${name}...</div>`;
+async function fetchContainerLogs(name, opts = {}) {
+  const { silent = false } = opts;
+  // N'affiche "Récupération..." que si l'écran est vide (premier chargement),
+  // pas à chaque tick de polling (évite le clignotement cyclique).
+  if (!silent && !terminalBodyEl.textContent.trim()) {
+    terminalBodyEl.innerHTML = `<div class="log-line">[LOGS] Récupération des logs du conteneur ${name}...</div>`;
+  }
   try {
     const res = await apiFetch(`/api/logs/container/${encodeURIComponent(name)}?tail=80`);
     const data = await res.json();
     if (!res.ok) {
-      terminalBodyEl.innerHTML = '';
-      appendLogLine(`[ERROR] ${data.error || 'Erreur inconnue'}`);
+      if (!silent) {
+        terminalBodyEl.innerHTML = '';
+        appendLogLine(`[ERROR] ${data.error || 'Erreur inconnue'}`);
+      }
       return;
     }
-    terminalBodyEl.innerHTML = '';
-    const lines = (data.logs || '').split('\n');
-    if (!lines.some(l => l.trim())) {
-      appendLogLine(`[LOGS] Aucun log disponible pour ${name} (conteneur arrêté ou vide).`);
+    const lines = (data.logs || '').split('\n').filter(l => l.trim());
+    if (!silent) terminalBodyEl.innerHTML = '';
+    if (!lines.length) {
+      if (!silent) appendLogLine(`[LOGS] Aucun log disponible pour ${name} (conteneur arrêté ou vide).`);
       return;
     }
-    lines.forEach(l => {
-      if (l.trim()) appendLogLine(l);
-    });
+    lines.forEach(l => appendLogLine(l));
   } catch (err) {
-    terminalBodyEl.innerHTML = '';
-    appendLogLine(`[ERROR] Impossible de récupérer les logs: ${err.message}`);
+    if (!silent) {
+      terminalBodyEl.innerHTML = '';
+      appendLogLine(`[ERROR] Impossible de récupérer les logs: ${err.message}`);
+    }
   }
 }
 
@@ -835,7 +842,7 @@ document.getElementById('log-tabs').addEventListener('click', (e) => {
       terminalBodyEl.innerHTML = '<div class="log-line">[SYSTEM] Écoute du flux des logs système...</div>';
     } else {
       fetchContainerLogs(target);
-      state.logPollTimer = setInterval(() => fetchContainerLogs(target), CONTAINER_LOG_POLL_MS);
+      state.logPollTimer = setInterval(() => fetchContainerLogs(target, { silent: true }), CONTAINER_LOG_POLL_MS);
     }
   }
 });
