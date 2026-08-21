@@ -26,7 +26,7 @@ graph LR
         end
     end
 
-    PROXY["Proxy ISP / Résidentiel Amont<br>SOCKS5 / HTTP<br>(FlameProxies, PrivateProxy, etc.)"]
+    PROXY["Proxy ISP / Résidentiel Amont<br>SOCKS5 / HTTP<br>(ex. Proxiware, PrivateProxy, etc.)"]
     INTERNET["Plateformes de Monétisation & Internet"]
 
     MonetizationNodes -->|Trafic sortant TCP/UDP| TUN
@@ -57,18 +57,13 @@ Pour basculer vers un proxy spécifique :
 ./scripts/switch_isp_proxy.sh proxy.votre-fournisseur.com:1080 socks5
 ```
 
-### 3. Effectuer une Rotation d'IP (Fournisseur rotatif)
-```bash
-./scripts/rotate_ip.sh
-```
-
-### 4. Vérifier l'État Complet & Diagnostics
+### 3. Vérifier l'État Complet & Diagnostics
 Affiche les conteneurs actifs, l'IP publique active de la passerelle, et la résolution DNS :
 ```bash
 ./scripts/status.sh
 ```
 
-### 5. Tester la Connectivité SOCKS5 depuis l'Hôte
+### 4. Tester la Connectivité SOCKS5 depuis l'Hôte
 ```bash
 ./scripts/test_proxy.sh
 ```
@@ -82,7 +77,7 @@ Affiche les conteneurs actifs, l'IP publique active de la passerelle, et la rés
 # Passerelle Dédiée Static ISP / Residential
 # ==============================================================================
 ISP_PROXY_PROTOCOL="socks5"
-ISP_PROXY_HOST="proxy.flameproxies.com"
+ISP_PROXY_HOST="CHANGEME_proxy1.example.com"
 ISP_PROXY_PORT="1080"
 ISP_PROXY_USER="votre_utilisateur"
 ISP_PROXY_PASS="votre_mot_de_passe"

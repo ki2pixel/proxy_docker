@@ -4,7 +4,7 @@ set -e
 # Healthcheck des PROCESSUS du gateway (pas de la connectivité externe).
 # La santé du tunnel dépend du proxy amont (credentials/session tiers) et est
 # déjà supervisée par :
-#   - le watchdog interne (failover + rotation automatique)
+#   - le watchdog interne (failover : redémarrage du tunnel)
 #   - le dashboard (gatewayStatus via fetchCurrentGatewayIP)
 # Un healthcheck Docker doit refléter la santé du processus local. Le
 # kill-switch L3 garantit structurellement qu'aucun trafic ne fuit sur l'IP

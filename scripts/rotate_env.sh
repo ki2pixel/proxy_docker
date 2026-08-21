@@ -50,7 +50,7 @@ keys = [
     'API_KEY', 'HONEYGAIN_PASSWORD', 'PAWNS_PASSWORD',
     'PACKETSTREAM_CID', 'REPOCKET_API_KEY'
 ]
-print(json.dumps({k: ('session-rotated-' + gen() if k == 'ISP_PROXY_USER' else gen()) for k in keys}))
+print(json.dumps({k: gen() for k in keys}))
 ")
 
 python3 -c "
@@ -82,8 +82,7 @@ echo "========================================================"
 echo "✅ Rotation effectuée."
 echo "========================================================"
 echo "⚠️  Actions manuelles REQUISES :"
-echo "  1. Proxy ISP (FlameProxies) : mettre à jour ISP_PROXY_USER / ISP_PROXY_PASS"
-echo "     (une session de test a été générée — utilisez le dashboard du fournisseur)."
+echo "  1. Proxy ISP (fournisseur amont) : mettre à jour ISP_PROXY_USER / ISP_PROXY_PASS"
 echo "  2. Proxyrack   : API_KEY → https://peer.proxyrack.com (Settings → API)."
 echo "  3. Honeygain   : HONEYGAIN_PASSWORD → https://dashboard.honeygain.com (profil)."
 echo "  4. Pawns.app   : PAWNS_PASSWORD → https://pawns.app (profil)."

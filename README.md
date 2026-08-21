@@ -26,7 +26,7 @@ graph TD
         end
 
         subgraph DashboardContainer ["Conteneur : isp-dashboard"]
-            DASH["Superviseur Express.js & SSE (Port :8088)<br>• Docker Engine Socket<br>• Métriques par passerelle (IP, latence, santé)<br>• Éditeur .env en sections par passerelle<br>• Rotation d'IP individuelle par passerelle"]
+            DASH["Superviseur Express.js & SSE (Port :8088)<br>• Docker Engine Socket<br>• Métriques par passerelle (IP, latence, santé)<br>• Éditeur .env en sections par passerelle<br>• Contrôle start/stop/restart des providers"]
         end
 
         UPSTREAM1["Proxy Résidentiel 1"] --> INTERNET
@@ -43,8 +43,7 @@ graph TD
 
 ### Points Clés de l'Architecture :
 * 🛡️ **Isolation 100% Garantie par passerelle (Kill-Switch / Zéro Fuite)** : le trafic d'un pool ne touche jamais l'IP du serveur hôte ni l'IP d'un autre pool. Si le proxy amont d'une passerelle tombe, **son** trafic est instantanément bloqué (les autres passerelles continuent).
-* 🔄 **Watchdog d'Auto-Guérison par passerelle** : chaque gateway-isp détecte ses déconnexions et génère une nouvelle session active (failover ~40s).
-* ⏰ **Rotation Préventive par passerelle (50 min)** : déclenchée par le controller pour chaque passerelle dont le proxy est en mode session résidentielle (`session-`).
+* 🔄 **Watchdog d'Auto-Guérison par passerelle** : chaque gateway-isp détecte ses déconnexions et relance le tunnel (failover ~40s).
 * ⚡ **DNS-over-HTTPS (DoH)** par passerelle : prévention absolue des fuites DNS (Cloudflare / Google / Quad9).
 * 🌐 **Multi-pools d'IP** : avec `ENABLED_GATEWAYS="1,2,3,4"`, chaque pool dispose de son propre quota de connexions (ex. 4 × 1000 connexions) et de ses propres devices déclarés sur les plateformes (`Device-ISP-1`, `Device-ISP-2`...).
 * 🔐 **Dashboard Authentifié** : token (`DASHBOARD_TOKEN`), sessions signées HMAC, CSRF, rate limiting, **CSP stricte** — exposition via tunnel SSH uniquement.
@@ -116,7 +115,7 @@ Caddy obtient automatiquement un certificat Let's Encrypt pour `DASHBOARD_DOMAIN
 
 ### ✏️ Éditeur de Configuration intégré :
 Le dashboard permet de **modifier le `.env` directement** (section "Configuration de la Stack"), sans SSH :
-* Champs groupés en **sections repliables** : `Global` (dashboard, rotation, loglevel), `Passerelle 1..4` (proxy + 5 providers chacune), `Clés héritées` (anciennes clés mono-passerelle, conservées pour la migration) avec badge du schéma de proxy actif (session résidentielle vs classique).
+* Champs groupés en **sections repliables** : `Global` (dashboard, loglevel), `Passerelle 1..4` (proxy + 5 providers chacune), `Clés héritées` (anciennes clés mono-passerelle, conservées pour la migration) avec badge du schéma de proxy actif (classique).
 * Les mots de passe et clés API sont **masqués** (impossible de les lire ou de les écraser par accident — champ vide = inchangé).
 * Bouton **"Enregistrer"** (écrit le `.env`) ou **"Enregistrer & Appliquer"** (écrit + `docker compose up -d` avec confirmation).
 * Seules les clés connues sont éditables (allowlist) — pas de mode fichier brut.
@@ -163,7 +162,7 @@ COMPOSE_PROFILES="all"
 
 # --- Passerelle 1 (fallback clés historiques ISP_PROXY_*) ---
 GW1_ISP_PROXY_PROTOCOL="socks5"
-GW1_ISP_PROXY_HOST="proxy.flameproxies.com"
+GW1_ISP_PROXY_HOST="CHANGEME_proxy1.example.com"
 GW1_ISP_PROXY_PORT="1080"
 GW1_ISP_PROXY_USER="votre_identifiant_session"
 GW1_ISP_PROXY_PASS="votre_mot_de_passe"
@@ -174,8 +173,6 @@ GW1_ISP_PROXY_PASS="votre_mot_de_passe"
 
 # --- Global (appliqué à toutes les passerelles) ---
 GATEWAY_LOGLEVEL="warn"
-AUTO_ROTATE_SESSION="true"
-AUTO_ROTATE_INTERVAL="50"
 ```
 > ⚠️ Les anciennes clés (`ISP_PROXY_HOST`, `PAWNS_EMAIL`, ...) restent **acceptées** : elles servent de fallback pour la passerelle 1 (migration sans casse). Le dashboard continue de les afficher (section "Clés héritées").
 > ⚠️ Le démarrage est refusé si des valeurs placeholder (`CHANGEME_*`) restent dans le `.env`.
@@ -205,7 +202,6 @@ Tableau de bord Web : **[http://localhost:8088](http://localhost:8088)** — con
 | [`scripts/azure_cloud_init.sh`](scripts/azure_cloud_init.sh) | Script cloud-init d'installation automatique pour VM Azure Debian 13. |
 | [`scripts/digitalocean_cloud_init.sh`](scripts/digitalocean_cloud_init.sh) | Script cloud-init pour DigitalOcean Droplet. |
 | [`scripts/vultr_cloud_init.sh`](scripts/vultr_cloud_init.sh) | Script cloud-init pour Vultr Cloud Compute. |
-| [`scripts/rotate_ip.sh`](scripts/rotate_ip.sh) | Déclenche une rotation manuelle immédiate de la session résidentielle. Usage : `./scripts/rotate_ip.sh [gateway]` (défaut : toutes les passerelles actives). |
 | [`scripts/rotate_env.sh`](scripts/rotate_env.sh) | **Rotation de tous les secrets** du `.env` (génère de nouvelles valeurs + guide). |
 | [`scripts/status.sh`](scripts/status.sh) | Affiche l'état complet des conteneurs, le statut de **chaque passerelle** et la géolocalisation de chaque IP. |
 | [`scripts/switch_isp_proxy.sh`](scripts/switch_isp_proxy.sh) | Bascule à chaud le proxy amont d'une passerelle : `./scripts/switch_isp_proxy.sh <HOST:PORT[:USER:PASS]> [socks5|http] [gateway]` (défaut gateway 1). |

@@ -84,17 +84,18 @@ docker exec gateway-isp-2 curl -s https://ipinfo.io/json
 
 ## Dashboard
 
-- Une carte par passerelle active : IP, géolocalisation, ISP, latence, santé, proxy
-  configuré, bouton **Rotation d'IP individuel**.
+- Une carte par passerelle active : IP, géolocalisation, ISP, latence, santé, proxy configuré.
 - Les 5 providers de chaque passerelle sous sa carte (start/stop/restart par nœud).
 - Éditeur `.env` en sections repliables : **Global**, **Passerelle 1..4**, **Clés héritées**.
 - Onglets logs dynamiques : System + 1 onglet par passerelle + 1 par provider.
 
-## Rotation de session
+## Watchdog et failover
 
-La rotation préventive est **par passerelle** : seule la passerelle dont le proxy est
-en mode session résidentielle (`GW{n}_ISP_PROXY_USER` contient `session-`) est redémarrée
-à chaque intervalle — les autres passerelles ne sont jamais affectées.
+Chaque passerelle surveille sa connectivité via un watchdog interne (toutes les 20s).
+En cas de perte de connexion du proxy amont, le tunnel est redémarré automatiquement
+(failover). Avec un proxy à IP fixe (ex. Static ISP), aucune rotation de session n'est
+possible ni nécessaire : l'IP de sortie ne change pas, le watchdog ne fait que rétablir
+le tunnel.
 
 ## Migration depuis la mono-passerelle
 

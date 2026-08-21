@@ -30,8 +30,6 @@ const ENV_PATH = path.join(APP_DIR, '.env');
 // -----------------------------------------------------------------------------
 const DASHBOARD_TOKEN = process.env.DASHBOARD_TOKEN || '';
 const DASHBOARD_SECRET = process.env.DASHBOARD_SECRET || '';
-const AUTO_ROTATE_SESSION = process.env.AUTO_ROTATE_SESSION !== 'false';
-const AUTO_ROTATE_INTERVAL = parseInt(process.env.AUTO_ROTATE_INTERVAL || '50', 10) || 50;
 const SESSION_TTL_MS = 7 * 24 * 3600 * 1000; // 7 jours
 
 if (DASHBOARD_TOKEN.length < 16) {
@@ -131,11 +129,9 @@ function rateLimit({ windowMs, max, name }) {
 
 const apiLimiter = rateLimit({ windowMs: 60_000, max: 120, name: 'API global' });
 const loginLimiter = rateLimit({ windowMs: 60_000, max: 5, name: 'connexion' });
-const rotateLimiter = rateLimit({ windowMs: 60_000, max: 3, name: 'rotation IP' });
 
 app.use('/api', apiLimiter);
 app.use('/api/login', loginLimiter);
-app.use('/api/proxy/rotate', rotateLimiter);
 
 // -----------------------------------------------------------------------------
 // Authentification (cookie HMAC signé) + CSRF (double-submit)
@@ -192,7 +188,6 @@ function newGatewayState(num) {
     latencyMs: null,
     activeProxy: { host: '', port: '', protocol: 'socks5' },
     consecutiveFailures: 0,
-    lastRotationAt: 0,
     ipFetchInFlight: false
   };
 }
@@ -486,7 +481,7 @@ function updateEnvFile(updates) {
 }
 
 // -----------------------------------------------------------------------------
-// Invalidation du cache status après une mutation (rotation, action provider)
+// Invalidation du cache status après une mutation (action provider)
 // -----------------------------------------------------------------------------
 function invalidateStatusCache() {
   // Marque le cache comme expiré : le prochain GET /api/status déclenchera un
@@ -706,33 +701,7 @@ class StatusHealthCache {
 const statusCache = new StatusHealthCache(STATUS_TTL_MS);
 
 // -----------------------------------------------------------------------------
-// Helper: Rotation de session (IP) — par passerelle, écriture ciblée du .env
-// -----------------------------------------------------------------------------
-async function rotateSession(gw, reason = 'manuelle') {
-  const gstate = GATEWAY_STATES.get(gw.id);
-  if (Date.now() - gstate.lastRotationAt < 15_000) {
-    throw new Error('Rotation trop rapprochée (garde anti-double-rotation)');
-  }
-  gstate.lastRotationAt = Date.now();
-  log(`Rotation de session déclenchée (${gw.id}, ${reason})...`, 'INFO');
-
-  const newSession = `live${crypto.randomBytes(4).toString('hex')}`;
-  const env = readEnvFile();
-  const cfg = readGatewayEnv(gw.num, env);
-  if (cfg.user && cfg.user.includes('session-')) {
-    const newUser = cfg.user.replace(/session-[a-zA-Z0-9_-]+/g, `session-${newSession}`);
-    updateEnvFile({ [`GW${gw.num}_ISP_PROXY_USER`]: newUser });
-  }
-
-  await composeRestartGateway(gw);
-  await new Promise(r => setTimeout(r, 3000));
-  await fetchCurrentGatewayIP(gw);
-
-  return { ip: gstate.currentIP, location: gstate.currentLocation };
-}
-
-// -----------------------------------------------------------------------------
-// API Endpoints
+// Helper: Fetch Current IP through gateway-isp-{n} (via docker exec ou socket API)
 // -----------------------------------------------------------------------------
 
 // 0. Healthcheck (sans auth — pour Docker)
@@ -769,8 +738,7 @@ app.get('/api/config', requireAuth, (req, res) => {
   const env = readEnvFile();
   res.json({
     success: true,
-    config: configSnapshot(env),
-    proxyScheme: env.ISP_PROXY_USER?.includes('session-') ? 'session' : 'classic'
+    config: configSnapshot(env)
   });
 });
 
@@ -880,47 +848,6 @@ app.post('/api/gateways/:gwId/providers/:id/:action', requireAuth, requireCsrf, 
   }
 });
 
-// 2b. Proxy IP Rotation Trigger (par passerelle, défaut gw1)
-app.post('/api/proxy/rotate', requireAuth, requireCsrf, async (req, res) => {
-  const gwId = (req.body && req.body.gateway) || 'gw1';
-  const gw = getGateway(gwId);
-  if (!gw) return res.status(404).json({ error: 'Gateway not found' });
-  try {
-    const { ip, location } = await rotateSession(gw, 'manuelle (dashboard)');
-    invalidateStatusCache();
-    res.json({
-      success: true,
-      message: `IP tournée avec succès (${gw.id}) : ${ip}`,
-      ip,
-      location,
-      gateway: gw.id
-    });
-  } catch (err) {
-    log(`Rotation error (${gw.id}): ${err.message}`, 'ERROR');
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 2c. Rotation explicite par passerelle
-app.post('/api/gateways/:gwId/rotate', requireAuth, requireCsrf, async (req, res) => {
-  const gw = getGateway(req.params.gwId);
-  if (!gw) return res.status(404).json({ error: 'Gateway not found' });
-  try {
-    const { ip, location } = await rotateSession(gw, 'manuelle (dashboard)');
-    invalidateStatusCache();
-    res.json({
-      success: true,
-      message: `IP tournée avec succès (${gw.id}) : ${ip}`,
-      ip,
-      location,
-      gateway: gw.id
-    });
-  } catch (err) {
-    log(`Rotation error (${gw.id}): ${err.message}`, 'ERROR');
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // 3. Container Logs
 app.get('/api/logs/container/:name', requireAuth, async (req, res) => {
   const { name } = req.params;
@@ -1014,28 +941,6 @@ async function init() {
 
   // Note : le rafraîchissement périodique des passerelles est assuré par le
   // cache SWR de /api/status (TTL 10 s, refresh en arrière-plan à la demande).
-
-  // Rotation préventive centralisée, PAR passerelle active (uniquement pour les
-  // proxys à session résidentielle "session-...". Sans session- dans GW{n}_ISP_PROXY_USER,
-  // aucune rotation : un proxy classique HOST:PORT:USER:PASS n'a pas besoin de redémarrage
-  // périodique.)
-  const intervalMs = AUTO_ROTATE_INTERVAL * 60_000;
-  if (AUTO_ROTATE_SESSION && AUTO_ROTATE_INTERVAL > 0) {
-    setInterval(() => {
-      const fresh = readEnvFile();
-      for (const gw of getActiveGateways(fresh)) {
-        const cfg = readGatewayEnv(gw.num, fresh);
-        if (cfg.user && cfg.user.includes('session-')) {
-          rotateSession(gw, 'préventive (controller)').catch(err => {
-            log(`Rotation préventive échouée (${gw.id}): ${err.message}`, 'ERROR');
-          });
-        }
-      }
-    }, intervalMs);
-    log(`Rotation préventive de session toutes les ${AUTO_ROTATE_INTERVAL} min (controller, par passerelle)`, 'INFO');
-  } else {
-    log('Rotation préventive désactivée : AUTO_ROTATE_SESSION=false ou intervalle nul', 'INFO');
-  }
 
   // Signal handling
   const shutdown = (signal) => {

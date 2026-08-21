@@ -436,16 +436,6 @@ function renderGateways(gateways) {
 
     card.appendChild(info);
 
-    // Actions passerelle
-    const gwActions = document.createElement('div');
-    gwActions.className = 'node-actions';
-    const rotateBtn = document.createElement('button');
-    rotateBtn.className = 'btn btn-secondary btn-sm';
-    rotateBtn.textContent = 'Rotation d\'IP';
-    rotateBtn.addEventListener('click', () => gatewayRotate(gw.id, rotateBtn));
-    gwActions.appendChild(rotateBtn);
-    card.appendChild(gwActions);
-
     // Providers de cette passerelle
     const providersWrap = document.createElement('div');
     providersWrap.className = 'gw-providers';
@@ -549,25 +539,6 @@ window.nodeAction = async function(gwId, id, action) {
   }
 };
 
-async function gatewayRotate(gwId, button) {
-  if (button) button.disabled = true;
-  showToast(`Rotation de l'IP de la passerelle ${gwId} en cours...`, 'info');
-  try {
-    const res = await apiFetch(`/api/gateways/${gwId}/rotate`, { method: 'POST' });
-    const data = await res.json();
-    if (data.success) {
-      showToast(data.message || `Nouvelle IP : ${data.ip}`, 'success');
-      setTimeout(fetchStatus, 1500);
-    } else {
-      showToast(data.error || 'Erreur lors de la rotation', 'error');
-    }
-  } catch (err) {
-    if (err.message !== 'Session expirée') showToast(err.message, 'error');
-  } finally {
-    if (button) button.disabled = false;
-  }
-}
-
 // -----------------------------------------------------------------------------
 // 3. Quick Actions & Helpers
 // -----------------------------------------------------------------------------
@@ -587,28 +558,6 @@ if (quickRefreshBtn) {
       showToast('Rafraîchissement des métriques et de la passerelle...', 'info');
       await fetchStatus();
       showToast('Métriques mises à jour avec succès !', 'success');
-    });
-  });
-}
-
-// Rotate IP button (passe par la route générique : défaut gw1)
-const rotateIpBtn = document.getElementById('btn-rotate-ip');
-if (rotateIpBtn) {
-  rotateIpBtn.addEventListener('click', () => {
-    withBusy(rotateIpBtn, async () => {
-      showToast('Rotation de l\'adresse IP (passerelle 1) en cours...', 'info');
-      try {
-        const res = await apiFetch('/api/proxy/rotate', { method: 'POST' });
-        const data = await res.json();
-        if (data.success) {
-          showToast(data.message || `Nouvelle IP : ${data.ip}`, 'success');
-          setTimeout(fetchStatus, 1500);
-        } else {
-          showToast(data.error || 'Erreur lors de la rotation', 'error');
-        }
-      } catch (err) {
-        if (err.message !== 'Session expirée') showToast(err.message, 'error');
-      }
     });
   });
 }
@@ -658,7 +607,7 @@ document.getElementById('btn-restart-all-nodes').addEventListener('click', async
 // -----------------------------------------------------------------------------
 // Catégories de l'éditeur : global + une section repliable par passerelle + legacy
 const CATEGORY_LABELS = {
-  global: '⚙️ Global (dashboard & rotation)',
+  global: '⚙️ Global (dashboard)',
   gw1: 'Passerelle 1 — Proxy 1',
   gw2: 'Passerelle 2 — Proxy 2',
   gw3: 'Passerelle 3 — Proxy 3',
@@ -674,20 +623,13 @@ async function fetchConfig() {
     const res = await apiFetch('/api/config');
     if (!res.ok) return;
     const data = await res.json();
-    renderConfig(data.config, data.proxyScheme);
+    renderConfig(data.config);
   } catch (err) {
     console.error('Error fetching config:', err);
   }
 }
 
-function renderConfig(config, proxyScheme) {
-  const badge = document.getElementById('config-scheme-badge');
-  if (badge) {
-    badge.textContent = proxyScheme === 'session'
-      ? 'Schéma : session résidentielle (rotation auto)'
-      : 'Schéma : classique (HOST:PORT:USER:PASS)';
-  }
-
+function renderConfig(config) {
   const container = document.getElementById('config-fields');
   container.innerHTML = '';
 

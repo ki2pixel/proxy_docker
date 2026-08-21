@@ -19,14 +19,7 @@ HOST="${ISP_PROXY_HOST:-}"
 PORT="${ISP_PROXY_PORT:-}"
 USER="${ISP_PROXY_USER:-}"
 PASS="${ISP_PROXY_PASS:-}"
-AUTO_ROTATE="${AUTO_ROTATE_SESSION:-true}"
-AUTO_ROTATE_INTERVAL="${AUTO_ROTATE_INTERVAL:-50}" # Rotation préventive en minutes (0 = désactivé)
-
-# Validation numérique (sinon défaut)
-if ! [[ "$AUTO_ROTATE_INTERVAL" =~ ^[0-9]+$ ]]; then
-    echo "[!] AUTO_ROTATE_INTERVAL invalide ('$AUTO_ROTATE_INTERVAL'), défaut à 50."
-    AUTO_ROTATE_INTERVAL=50
-fi
+WATCHDOG_ENABLED="${WATCHDOG_ENABLED:-true}"
 
 build_proxy_uri() {
     if [ -n "$PROXY" ]; then
@@ -50,7 +43,7 @@ fi
 
 echo "[*] Target Proxy  : $PROTOCOL://${HOST:-custom}:$PORT"
 echo "[*] TUN Interface : $TUN ($ADDR)"
-echo "[*] Auto-Rotation : $AUTO_ROTATE (Watchdog actif)"
+echo "[*] Watchdog      : $WATCHDOG_ENABLED (failover actif)"
 
 # 1. Create TUN Device
 if ! ip link show "$TUN" >/dev/null 2>&1; then
@@ -154,24 +147,15 @@ stop_tun2socks() {
 
 rotate_session() {
     local reason="${1:-failover}"
-    if [[ "$USER" == *"session-"* ]]; then
-        local new_sess
-        new_sess="live$(head -c 4 /dev/urandom | od -An -tu2 | tr -d ' ')"
-        USER=$(echo "$USER" | sed -E "s/session-[a-zA-Z0-9_-]+/session-${new_sess}/")
-        echo "========================================================"
-        echo "🔄 [Watchdog] Auto-rotation de session ($reason) -> session-${new_sess}"
-        echo "========================================================"
-        
-        stop_tun2socks
-        start_tun2socks
-        sleep 3
-        # Diagnostic immédiat
-        /usr/local/bin/healthcheck.sh || true
-    else
-        echo "[!] [Watchdog] Déconnexion détectée, redémarrage du tunnel..."
-        stop_tun2socks
-        start_tun2socks
-    fi
+    echo "========================================================"
+    echo "🔄 [Watchdog] Déconnexion détectée, redémarrage du tunnel ($reason)"
+    echo "========================================================"
+
+    stop_tun2socks
+    start_tun2socks
+    sleep 3
+    # Diagnostic immédiat
+    /usr/local/bin/healthcheck.sh || true
 }
 
 set +e
@@ -197,13 +181,12 @@ trap cleanup SIGINT SIGTERM
 # Démarrage initial de tun2socks
 start_tun2socks
 
-# Vérification immédiate au démarrage et rotation si la session initiale est expirée
+# Vérification immédiate au démarrage : si le proxy est inaccessible, on relance
+# le tunnel (failover initial)
 sleep 2
 if ! curl -s --max-time 3 http://ip-api.com/json >/dev/null 2>&1 && ! curl -s -k --max-time 3 https://ipinfo.io/json >/dev/null 2>&1; then
-    if [[ "$USER" == *"session-"* ]]; then
-        echo "[!] [Démarrage] Session initiale expirée ou inaccessible. Auto-rotation immédiate..."
-        rotate_session "démarrage initial"
-    fi
+    echo "[!] [Démarrage] Proxy inaccessible. Redémarrage du tunnel..."
+    rotate_session "démarrage initial"
 fi
 
 # 6. Boucle de Surveillance Active (Watchdog)
@@ -225,9 +208,10 @@ while true; do
         continue
     fi
 
-    # Test de connectivité actif (Failover uniquement — la rotation préventive
-    # est déclenchée par le controller via /api/proxy/rotate)
-    if [ "$AUTO_ROTATE" = "true" ]; then
+    # Test de connectivité actif (Failover — le watchdog relance le tunnel si
+    # le proxy amont est injoignable ; avec une IP fixe, aucune rotation de
+    # session n'est possible ni nécessaire)
+    if [ "$WATCHDOG_ENABLED" = "true" ]; then
         if curl -s --max-time 4 http://ip-api.com/json >/dev/null 2>&1 || \
            curl -s -k --max-time 4 https://ipinfo.io/json >/dev/null 2>&1 || \
            curl -s -k --max-time 4 https://ifconfig.co/json >/dev/null 2>&1; then

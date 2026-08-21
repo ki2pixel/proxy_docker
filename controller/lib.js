@@ -127,13 +127,11 @@ export const ALLOWED_ACTIONS = new Set(['start', 'stop', 'restart']);
 // Une clé est sensible si elle est secrète, éventuellement préfixée par passerelle (GW1_, GW2_...)
 const SENSITIVE_KEY_RE = /^(GW\d+_)?(ISP_PROXY_PASS|API_KEY|UUID|.*_PASSWORD|.*_API_KEY)$/;
 
-// Meta des clés globales (dashboard + rotation + gateway commun)
+// Meta des clés globales (dashboard + gateway commun)
 const GLOBAL_KEYS = [
   { key: 'DASHBOARD_PORT', category: 'global', label: 'Port du dashboard' },
   { key: 'COMPOSE_PROFILES', category: 'global', label: 'Profils actifs', options: ['none', 'repocket', 'honeygain', 'packetstream', 'pawns', 'proxyrack', 'all'] },
   { key: 'ENABLED_GATEWAYS', category: 'global', label: 'Passerelles actives (ex. 1,2,3,4)' },
-  { key: 'AUTO_ROTATE_SESSION', category: 'global', label: 'Rotation automatique', options: ['true', 'false'] },
-  { key: 'AUTO_ROTATE_INTERVAL', category: 'global', label: 'Intervalle de rotation (min)' },
   { key: 'GATEWAY_LOGLEVEL', category: 'global', label: 'Niveau de log gateway', options: ['warning', 'info', 'debug'] }
 ];
 

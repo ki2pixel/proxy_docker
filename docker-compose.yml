@@ -51,8 +51,6 @@ services:
       - COMPOSE_PROFILES=${COMPOSE_PROFILES:-repocket}
       - DASHBOARD_TOKEN=${DASHBOARD_TOKEN:?DASHBOARD_TOKEN doit être défini dans .env}
       - DASHBOARD_SECRET=${DASHBOARD_SECRET:?DASHBOARD_SECRET doit être défini dans .env}
-      - AUTO_ROTATE_SESSION=${AUTO_ROTATE_SESSION:-true}
-      - AUTO_ROTATE_INTERVAL=${AUTO_ROTATE_INTERVAL:-50}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./docker-compose.yml:/workspace/docker-compose.yml:ro
@@ -89,8 +87,6 @@ services:
       - ISP_PROXY_USER=${GW1_ISP_PROXY_USER:-${ISP_PROXY_USER:-}}
       - ISP_PROXY_PASS=${GW1_ISP_PROXY_PASS:-${ISP_PROXY_PASS:-}}
       - LOGLEVEL=${GATEWAY_LOGLEVEL:-warning}
-      - AUTO_ROTATE_SESSION=${AUTO_ROTATE_SESSION:-true}
-      - AUTO_ROTATE_INTERVAL=${AUTO_ROTATE_INTERVAL:-50}
     mem_limit: 256m
     cpus: 0.5
     pids_limit: 256
@@ -215,8 +211,6 @@ services:
       - ISP_PROXY_USER=${GW2_ISP_PROXY_USER:-}
       - ISP_PROXY_PASS=${GW2_ISP_PROXY_PASS:-}
       - LOGLEVEL=${GATEWAY_LOGLEVEL:-warning}
-      - AUTO_ROTATE_SESSION=${AUTO_ROTATE_SESSION:-true}
-      - AUTO_ROTATE_INTERVAL=${AUTO_ROTATE_INTERVAL:-50}
     mem_limit: 256m
     cpus: 0.5
     pids_limit: 256
@@ -340,8 +334,6 @@ services:
       - ISP_PROXY_USER=${GW3_ISP_PROXY_USER:-}
       - ISP_PROXY_PASS=${GW3_ISP_PROXY_PASS:-}
       - LOGLEVEL=${GATEWAY_LOGLEVEL:-warning}
-      - AUTO_ROTATE_SESSION=${AUTO_ROTATE_SESSION:-true}
-      - AUTO_ROTATE_INTERVAL=${AUTO_ROTATE_INTERVAL:-50}
     mem_limit: 256m
     cpus: 0.5
     pids_limit: 256
@@ -465,8 +457,6 @@ services:
       - ISP_PROXY_USER=${GW4_ISP_PROXY_USER:-}
       - ISP_PROXY_PASS=${GW4_ISP_PROXY_PASS:-}
       - LOGLEVEL=${GATEWAY_LOGLEVEL:-warning}
-      - AUTO_ROTATE_SESSION=${AUTO_ROTATE_SESSION:-true}
-      - AUTO_ROTATE_INTERVAL=${AUTO_ROTATE_INTERVAL:-50}
     mem_limit: 256m
     cpus: 0.5
     pids_limit: 256

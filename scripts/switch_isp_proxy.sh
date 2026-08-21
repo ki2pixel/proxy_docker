@@ -57,7 +57,7 @@ else
     echo "  ./scripts/switch_isp_proxy.sh <HOST:PORT> [socks5|http] [gateway]"
     echo "  ./scripts/switch_isp_proxy.sh <HOST:PORT:USER:PASS> [socks5|http] [gateway]"
     echo "Exemples :"
-    echo "  ./scripts/switch_isp_proxy.sh proxy.flameproxies.com:1080 socks5 1"
+    echo "  ./scripts/switch_isp_proxy.sh proxy.example.com:1080 socks5 1"
     echo "  ./scripts/switch_isp_proxy.sh proxy.example.com:1080:monuser:monpass socks5 2"
     echo ""
     exit 1
