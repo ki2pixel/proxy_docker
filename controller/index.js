@@ -7,7 +7,6 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import zlib from 'zlib';
 import {
   redactSecrets, signSession, parseSession,
   escapeEnvValue, parseEnv, applyEnvUpdates,
@@ -47,63 +46,11 @@ if (DASHBOARD_SECRET.length < 32) {
 }
 
 // -----------------------------------------------------------------------------
-// Compression HTTP maison (zlib natif, sans dépendance) — Brotli si accepté,
-// sinon gzip. Exclut les flux SSE (buffering fatal au temps réel) et les
-// réponses déjà compressées.
+// Compression HTTP (brotli/gzip) via le middleware officiel `compression`.
+// IMPORTANT : exclut les flux SSE (text/event-stream) — la compression
+// bufferiserait les événements et détruirait le temps réel des logs.
 // -----------------------------------------------------------------------------
-function compressionMiddleware(req, res, next) {
-  // Exclusions : SSE, pas de Accept-Encoding, corps < 1 KB, pas d'invalidation
-  const contentType = res.getHeader('Content-Type') || '';
-  if (contentType.includes('text/event-stream')) return next();
-  if (req.headers['x-no-compression']) return next();
-
-  const accept = (req.headers['accept-encoding'] || '').toLowerCase();
-  const useBrotli = accept.includes('br');
-  const useGzip = accept.includes('gzip');
-  if (!useBrotli && !useGzip) return next();
-
-  const originalWrite = res.write.bind(res);
-  const originalEnd = res.end.bind(res);
-  const threshold = 1024;
-  let totalBytes = 0;
-  let compressed = null;
-  let streamActive = false;
-  let hasFlushed = false;
-
-  const startStream = () => {
-    if (streamActive || hasFlushed) return;
-    streamActive = true;
-    compressed = useBrotli
-      ? zlib.createBrotliCompress({ params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } })
-      : zlib.createGzip({ level: 6 });
-    compressed.on('data', chunk => originalWrite(chunk));
-    compressed.on('end', () => originalEnd());
-    res.removeHeader('Content-Length');
-    res.setHeader('Content-Encoding', useBrotli ? 'br' : 'gzip');
-    res.setHeader('Vary', 'Accept-Encoding');
-  };
-
-  res.write = (chunk, ...rest) => {
-    totalBytes += Buffer.byteLength(chunk);
-    if (totalBytes < threshold) return true;
-    startStream();
-    return compressed.write(chunk, ...rest);
-  };
-
-  res.end = (chunk, ...rest) => {
-    if (chunk) totalBytes += Buffer.byteLength(chunk);
-    if (totalBytes < threshold || (res.statusCode >= 400 && totalBytes < threshold * 4)) {
-      // Trop petit (ou erreur) : réponse en clair
-      if (chunk) return originalEnd(chunk, ...rest);
-      return originalEnd(...rest);
-    }
-    startStream();
-    if (chunk) compressed.write(chunk);
-    compressed.end();
-  };
-
-  next();
-}
+import compression from 'compression';
 
 const app = express();
 app.disable('x-powered-by');
@@ -131,7 +78,17 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(compressionMiddleware);
+// Compression HTTP (brotli/gzip) — exclusion stricte des flux SSE pour ne
+// pas bufferiser les événements temps réel. Seuil 1 KB, Brotli prioritaire.
+app.use(compression({
+  threshold: 1024,
+  filter: (req, res) => {
+    const contentType = res.getHeader('Content-Type') || '';
+    if (contentType.includes('text/event-stream')) return false;
+    if (req.headers['x-no-compression']) return false;
+    return compression.filter(req, res);
+  }
+}));
 
 // Assets versionnés par hash de contenu (public/dist, généré par scripts/build-assets.mjs) :
 // immuables 1 an, aucun re-fetch via le tunnel.
