@@ -45,6 +45,15 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
+            echo "🔨 [Deploy] Génération des assets versionnés (cache-busting)..."
+            # Si node est dispo sur la VM, régénère les hashes ; sinon on garde
+            # les fichiers dist/ commités (fallback garanti).
+            if command -v node >/dev/null 2>&1; then
+              node scripts/build-assets.mjs
+            else
+              echo "ℹ️ node absent sur la VM : utilisation des assets dist/ commités."
+            fi
+
             echo "🔍 [Deploy] Validation de la configuration compose..."
             docker compose config --quiet
 

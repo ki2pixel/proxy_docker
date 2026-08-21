@@ -1,0 +1,57 @@
+/* =============================================================================
+   Polices self-hosted (subset latin) — plus aucune requête Google Fonts.
+   Générées depuis Google Fonts, servies via /static/dist/fonts/ (immuables).
+   ============================================================================= */
+
+/* Outfit */
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/static/dist/fonts/outfit-latin-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/static/dist/fonts/outfit-latin-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/static/dist/fonts/outfit-latin-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Outfit';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/static/dist/fonts/outfit-latin-700.woff2') format('woff2');
+}
+
+/* JetBrains Mono */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/static/dist/fonts/jetbrains-mono-latin-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/static/dist/fonts/jetbrains-mono-latin-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/static/dist/fonts/jetbrains-mono-latin-600.woff2') format('woff2');
+}

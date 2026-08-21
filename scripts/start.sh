@@ -36,6 +36,14 @@ echo "[*] Dashboard Web           : http://localhost:${PORT} (tunnel SSH requis 
 echo "[*] Construction et démarrage des conteneurs..."
 echo "[*] Profils compose         :$COMPOSE_ARGS"
 
+# Cache-busting : hache les assets (app.js, style.css) et réécrit index.html.
+# Si node est absent, on utilise les assets dist/ commités (fallback).
+if command -v node >/dev/null 2>&1; then
+  node scripts/build-assets.mjs
+else
+  echo "[*] node absent : utilisation des assets dist/ commités."
+fi
+
 # shellcheck disable=SC2086
 docker compose -p "$PROJECT_NAME" $COMPOSE_ARGS up -d --build
 

@@ -7,6 +7,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import zlib from 'zlib';
 import {
   redactSecrets, signSession, parseSession,
   escapeEnvValue, parseEnv, applyEnvUpdates,
@@ -45,6 +46,65 @@ if (DASHBOARD_SECRET.length < 32) {
   process.exit(1);
 }
 
+// -----------------------------------------------------------------------------
+// Compression HTTP maison (zlib natif, sans dépendance) — Brotli si accepté,
+// sinon gzip. Exclut les flux SSE (buffering fatal au temps réel) et les
+// réponses déjà compressées.
+// -----------------------------------------------------------------------------
+function compressionMiddleware(req, res, next) {
+  // Exclusions : SSE, pas de Accept-Encoding, corps < 1 KB, pas d'invalidation
+  const contentType = res.getHeader('Content-Type') || '';
+  if (contentType.includes('text/event-stream')) return next();
+  if (req.headers['x-no-compression']) return next();
+
+  const accept = (req.headers['accept-encoding'] || '').toLowerCase();
+  const useBrotli = accept.includes('br');
+  const useGzip = accept.includes('gzip');
+  if (!useBrotli && !useGzip) return next();
+
+  const originalWrite = res.write.bind(res);
+  const originalEnd = res.end.bind(res);
+  const threshold = 1024;
+  let totalBytes = 0;
+  let compressed = null;
+  let streamActive = false;
+  let hasFlushed = false;
+
+  const startStream = () => {
+    if (streamActive || hasFlushed) return;
+    streamActive = true;
+    compressed = useBrotli
+      ? zlib.createBrotliCompress({ params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } })
+      : zlib.createGzip({ level: 6 });
+    compressed.on('data', chunk => originalWrite(chunk));
+    compressed.on('end', () => originalEnd());
+    res.removeHeader('Content-Length');
+    res.setHeader('Content-Encoding', useBrotli ? 'br' : 'gzip');
+    res.setHeader('Vary', 'Accept-Encoding');
+  };
+
+  res.write = (chunk, ...rest) => {
+    totalBytes += Buffer.byteLength(chunk);
+    if (totalBytes < threshold) return true;
+    startStream();
+    return compressed.write(chunk, ...rest);
+  };
+
+  res.end = (chunk, ...rest) => {
+    if (chunk) totalBytes += Buffer.byteLength(chunk);
+    if (totalBytes < threshold || (res.statusCode >= 400 && totalBytes < threshold * 4)) {
+      // Trop petit (ou erreur) : réponse en clair
+      if (chunk) return originalEnd(chunk, ...rest);
+      return originalEnd(...rest);
+    }
+    startStream();
+    if (chunk) compressed.write(chunk);
+    compressed.end();
+  };
+
+  next();
+}
+
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '10kb' }));
@@ -59,8 +119,8 @@ app.use((req, res, next) => {
     'Content-Security-Policy',
     "default-src 'self'; " +
     "script-src 'self'; " +
-    "style-src 'self' https://fonts.googleapis.com; " +
-    "font-src https://fonts.gstatic.com; " +
+    "style-src 'self'; " +
+    "font-src 'self'; " +
     "connect-src 'self'; " +
     "img-src 'self' data:; " +
     "base-uri 'none'; " +
@@ -71,7 +131,24 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(compressionMiddleware);
+
+// Assets versionnés par hash de contenu (public/dist, généré par scripts/build-assets.mjs) :
+// immuables 1 an, aucun re-fetch via le tunnel.
+app.use('/static/dist', express.static(path.join(__dirname, 'public', 'dist'), {
+  maxAge: '1y',
+  immutable: true,
+  etag: false,
+  lastModified: false
+}));
+
+// Racine : index.html + ressources non versionnées (fallback si pas de build).
+// maxAge 0 + ETag → 1 seule revalidation par chargement (1 RTT via tunnel).
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: 0,
+  etag: true,
+  lastModified: true
+}));
 
 // -----------------------------------------------------------------------------
 // Rate Limiting (léger, sans dépendance externe)
@@ -173,6 +250,7 @@ const state = {
 
 const sseClients = new Set();
 const MAX_SSE_CLIENTS = 20;
+let sseEventCounter = 0; // id global des événements SSE (Last-Event-ID)
 
 // -----------------------------------------------------------------------------
 // Lecture des clés .env d'une passerelle (avec fallback legacy pour gw1)
@@ -193,12 +271,13 @@ function readGatewayEnv(num, env = null) {
 function log(msg, level = 'INFO') {
   const timestamp = new Date().toISOString();
   const safeMsg = redactSecrets(msg);
-  const entry = { timestamp, level, message: safeMsg };
+  sseEventCounter += 1;
+  const entry = { id: sseEventCounter, timestamp, level, message: safeMsg };
   state.logs.push(entry);
   if (state.logs.length > 200) state.logs.shift();
 
   console.log(`[${timestamp}] [${level}] ${safeMsg}`);
-  const sseData = `data: ${JSON.stringify(entry)}\n\n`;
+  const sseData = `id: ${entry.id}\ndata: ${JSON.stringify(entry)}\n\n`;
   for (const client of sseClients) {
     try {
       client.write(sseData);
@@ -450,6 +529,15 @@ function updateEnvFile(updates) {
 }
 
 // -----------------------------------------------------------------------------
+// Invalidation du cache status après une mutation (rotation, action provider)
+// -----------------------------------------------------------------------------
+function invalidateStatusCache() {
+  // Marque le cache comme expiré : le prochain GET /api/status déclenchera un
+  // refresh en arrière-plan immédiat (les curls sont protégés par ipFetchInFlight)
+  statusCache.lastUpdated = 0;
+}
+
+// -----------------------------------------------------------------------------
 // Helper: Exécution docker compose (sans shell)
 // -----------------------------------------------------------------------------
 async function composeUp(serviceId) {
@@ -539,6 +627,126 @@ async function fetchCurrentGatewayIP(gw) {
     gstate.ipFetchInFlight = false;
   }
 }
+
+// -----------------------------------------------------------------------------
+// Status Health Cache (pattern Stale-While-Revalidate)
+// -----------------------------------------------------------------------------
+// La route /api/status ne bloque JAMAIS la réponse sur les health-checks
+// réseau (curl ipinfo.io, jusqu'à ~6 s par passerelle) : elle sert l'état en
+// cache instantanément et déclenche un refresh d'arrière-plan si le TTL est
+// dépassé. `isFetching` joue le rôle de verrou anti-thundering-herd.
+const STATUS_TTL_MS = 10_000;
+
+async function buildStatusSnapshot() {
+  const env = readEnvFile();
+  const activeGateways = getActiveGateways(env);
+
+  await Promise.allSettled(activeGateways.map(gw => fetchCurrentGatewayIP(gw)));
+
+  const containers = await docker.listContainers();
+  const nameSet = new Set((containers || []).flatMap(c => c.Names || []));
+
+  const gateways = activeGateways.map(gw => {
+    const gstate = GATEWAY_STATES.get(gw.id);
+    const providers = gw.providers.map(p => {
+      const matched = nameSet.has(`/${p.container}`);
+      const container = (containers || []).find(c => (c.Names || []).includes(`/${p.container}`));
+      return {
+        ...p,
+        status: matched ? (container ? container.State : 'stopped') : 'stopped',
+        statusDetail: matched ? (container ? container.Status : 'Exited / Stopped') : 'Exited / Stopped',
+        running: matched && container ? container.State === 'running' : false,
+        containerId: matched && container ? container.Id : null
+      };
+    });
+    return {
+      id: gw.id,
+      num: gw.num,
+      container: gw.container,
+      ip: gstate.currentIP,
+      location: gstate.currentLocation,
+      isp: gstate.ispInfo,
+      latencyMs: gstate.latencyMs,
+      status: gstate.status,
+      activeProxy: gstate.activeProxy,
+      providers
+    };
+  });
+
+  return {
+    gateways,
+    summary: {
+      gatewaysTotal: activeGateways.length,
+      gatewaysHealthy: gateways.filter(g => g.status === 'HEALTHY').length,
+      nodesRunning: gateways.reduce((acc, g) => acc + g.providers.filter(p => p.running).length, 0),
+      nodesTotal: gateways.reduce((acc, g) => acc + g.providers.length, 0)
+    }
+  };
+}
+
+class StatusHealthCache {
+  constructor(ttlMs) {
+    this.ttlMs = ttlMs;
+    this.cache = null;
+    this.lastUpdated = 0;
+    this.isFetching = false;
+  }
+
+  async get() {
+    const now = Date.now();
+
+    // Phase 1 : initialisation du cache (premier appel)
+    if (!this.cache) {
+      if (!this.isFetching) {
+        this.isFetching = true;
+        try {
+          this.cache = await buildStatusSnapshot();
+          this.lastUpdated = Date.now();
+        } finally {
+          this.isFetching = false;
+        }
+      } else if (!this.firstWait) {
+        // Requête concurrente pendant l'init : attend la fin du fetch
+        this.firstWait = (async () => {
+          while (this.isFetching) await new Promise(r => setTimeout(r, 50));
+          return this.cache;
+        })();
+        await this.firstWait;
+        this.firstWait = null;
+      }
+      return this._payload();
+    }
+
+    // Phase 2 : stale-while-revalidate (refresh en arrière-plan)
+    if (now - this.lastUpdated > this.ttlMs && !this.isFetching) {
+      this.isFetching = true;
+      buildStatusSnapshot()
+        .then(data => {
+          this.cache = data;
+          this.lastUpdated = Date.now();
+        })
+        .catch(err => {
+          console.error(`[statusCache] Refresh arrière-plan échoué : ${err.message}`);
+        })
+        .finally(() => {
+          this.isFetching = false;
+        });
+    }
+
+    return this._payload();
+  }
+
+  _payload() {
+    const ageMs = Date.now() - this.lastUpdated;
+    return {
+      data: this.cache,
+      ageMs,
+      isStale: ageMs > this.ttlMs
+    };
+  }
+}
+
+const statusCache = new StatusHealthCache(STATUS_TTL_MS);
 
 // -----------------------------------------------------------------------------
 // Helper: Rotation de session (IP) — par passerelle, écriture ciblée du .env
@@ -650,6 +858,7 @@ app.put('/api/config', requireAuth, requireCsrf, async (req, res) => {
       gstate.activeProxy = { host: cfg.host, port: cfg.port, protocol: cfg.protocol };
     }
   }
+  invalidateStatusCache();
 
   res.json({
     success: true,
@@ -658,53 +867,16 @@ app.put('/api/config', requireAuth, requireCsrf, async (req, res) => {
   });
 });
 
-// 1. Status Overview (multi-passerelles)
+// 1. Status Overview (multi-passerelles) — réponse immédiate depuis le cache
+// SWR, refresh en arrière-plan si le TTL est dépassé (aucun blocage réseau).
 app.get('/api/status', requireAuth, async (req, res) => {
-  const env = readEnvFile();
-  const activeGateways = getActiveGateways(env);
-
-  // Fetch IP de chaque passerelle active (en parallèle, non bloquant)
-  await Promise.allSettled(activeGateways.map(gw => fetchCurrentGatewayIP(gw)));
-
-  const containers = await docker.listContainers();
-  const nameSet = new Set((containers || []).flatMap(c => c.Names || []));
-
-  const gateways = activeGateways.map(gw => {
-    const gstate = GATEWAY_STATES.get(gw.id);
-    const providers = gw.providers.map(p => {
-      const matched = nameSet.has(`/${p.container}`);
-      const container = (containers || []).find(c => (c.Names || []).includes(`/${p.container}`));
-      return {
-        ...p,
-        status: matched ? (container ? container.State : 'stopped') : 'stopped',
-        statusDetail: matched ? (container ? container.Status : 'Exited / Stopped') : 'Exited / Stopped',
-        running: matched && container ? container.State === 'running' : false,
-        containerId: matched && container ? container.Id : null
-      };
-    });
-    return {
-      id: gw.id,
-      num: gw.num,
-      container: gw.container,
-      ip: gstate.currentIP,
-      location: gstate.currentLocation,
-      isp: gstate.ispInfo,
-      latencyMs: gstate.latencyMs,
-      status: gstate.status,
-      activeProxy: gstate.activeProxy,
-      providers
-    };
+  const { data, ageMs, isStale } = await statusCache.get();
+  res.setHeader('X-Data-Age-ms', String(ageMs));
+  res.setHeader('Cache-Control', 'no-cache');
+  res.json({
+    meta: { dataAgeMs: ageMs, isStale },
+    ...data
   });
-
-  // Résumé global
-  const summary = {
-    gatewaysTotal: activeGateways.length,
-    gatewaysHealthy: gateways.filter(g => g.status === 'HEALTHY').length,
-    nodesRunning: gateways.reduce((acc, g) => acc + g.providers.filter(p => p.running).length, 0),
-    nodesTotal: gateways.reduce((acc, g) => acc + g.providers.length, 0)
-  };
-
-  res.json({ gateways, summary });
 });
 
 // 2. Provider Action (Start/Stop/Restart) — scope par passerelle
@@ -743,6 +915,7 @@ app.post('/api/gateways/:gwId/providers/:id/:action', requireAuth, requireCsrf, 
     }
 
     log(`Provider action: ${provider.name} (${gw.id}) -> ${action}`, 'INFO');
+    invalidateStatusCache();
     res.json({ success: true, message: `${provider.name} ${action}ed successfully.` });
   } catch (err) {
     log(`Provider action error: ${err.message}`, 'ERROR');
@@ -757,6 +930,7 @@ app.post('/api/proxy/rotate', requireAuth, requireCsrf, async (req, res) => {
   if (!gw) return res.status(404).json({ error: 'Gateway not found' });
   try {
     const { ip, location } = await rotateSession(gw, 'manuelle (dashboard)');
+    invalidateStatusCache();
     res.json({
       success: true,
       message: `IP tournée avec succès (${gw.id}) : ${ip}`,
@@ -776,6 +950,7 @@ app.post('/api/gateways/:gwId/rotate', requireAuth, requireCsrf, async (req, res
   if (!gw) return res.status(404).json({ error: 'Gateway not found' });
   try {
     const { ip, location } = await rotateSession(gw, 'manuelle (dashboard)');
+    invalidateStatusCache();
     res.json({
       success: true,
       message: `IP tournée avec succès (${gw.id}) : ${ip}`,
@@ -816,12 +991,29 @@ app.get('/api/logs/stream', requireAuth, (req, res) => {
   }
 
   res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
 
   sseClients.add(res);
-  state.logs.forEach(entry => res.write(`data: ${JSON.stringify(entry)}\n\n`));
+
+  // Reconnexion : restituer uniquement les événements manqués depuis le
+  // dernier id reçu (en-tête Last-Event-ID envoyé automatiquement par
+  // EventSource). Connexion à froid : replay borné aux 25 derniers logs.
+  const lastEventId = parseInt(req.headers['last-event-id'] || '', 10);
+  let eventsToDeliver = [];
+  if (Number.isFinite(lastEventId)) {
+    eventsToDeliver = state.logs.filter(e => e.id > lastEventId);
+  } else {
+    eventsToDeliver = state.logs.slice(-25);
+  }
+  for (const entry of eventsToDeliver) {
+    res.write(`id: ${entry.id}\ndata: ${JSON.stringify(entry)}\n\n`);
+  }
+
+  // Indique au client de retenter dans 5 s en cas de coupure
+  res.write('retry: 5000\n\n');
 
   const heartbeat = setInterval(() => {
     try {
@@ -863,11 +1055,8 @@ async function init() {
     log(`ISP Web Dashboard ready on port ${PORT}`, 'INFO');
   });
 
-  // Rafraîchissement périodique de toutes les passerelles actives
-  setInterval(() => {
-    const fresh = readEnvFile();
-    Promise.allSettled(getActiveGateways(fresh).map(gw => fetchCurrentGatewayIP(gw)));
-  }, 30_000);
+  // Note : le rafraîchissement périodique des passerelles est assuré par le
+  // cache SWR de /api/status (TTL 10 s, refresh en arrière-plan à la demande).
 
   // Rotation préventive centralisée, PAR passerelle active (uniquement pour les
   // proxys à session résidentielle "session-...". Sans session- dans GW{n}_ISP_PROXY_USER,
