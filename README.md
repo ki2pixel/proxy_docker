@@ -48,7 +48,8 @@ graph TD
 * ⚡ **DNS-over-HTTPS (DoH)** par passerelle : prévention absolue des fuites DNS (Cloudflare / Google / Quad9).
 * 🌐 **Multi-pools d'IP** : avec `ENABLED_GATEWAYS="1,2,3,4"`, chaque pool dispose de son propre quota de connexions (ex. 4 × 1000 connexions) et de ses propres devices déclarés sur les plateformes (`Device-ISP-1`, `Device-ISP-2`...).
 * 🔐 **Dashboard Authentifié** : token (`DASHBOARD_TOKEN`), sessions signées HMAC, CSRF, rate limiting, **CSP stricte** — exposition via tunnel SSH uniquement.
-* 📊 **Tableau de Bord & API en Temps Réel** : état individuel de chaque passerelle (IP, géolocalisation, latence, santé), nœuds par passerelle, logs SSE + polling 5s par conteneur, édition `.env` en sections repliables par passerelle.
+* 📊 **Tableau de Bord & API en Temps Réel** : état individuel de chaque passerelle (IP, géolocalisation, latence, santé), nœuds par passerelle, logs SSE + polling par conteneur, édition `.env` en sections repliables par passerelle.
+* ⚡ **Optimisé pour accès distant (tunnel SSH)** : API `/api/status` en cache SWR (réponse instantanée, health-checks en arrière-plan), compression **Brotli** (fallback gzip), polling client adaptatif (pause onglet caché, anti-chevauchement), assets hashés immuables (`/static/dist/*`), polices self-hosted — aucune requête externe.
 
 ---
 
@@ -88,9 +89,16 @@ Ce script configure automatiquement :
 ### 🌐 Accès au Tableau de Bord (sécurisé) :
 Le dashboard n'est **plus exposé publiquement** par défaut (bind `127.0.0.1`, UFW ne ouvre que le port 22). Accédez-y via un tunnel SSH :
 ```bash
-ssh -L 8088:localhost:8088 azureuser@<IP_PUBLIQUE_AZURE>
+mkdir -p ~/.ssh/sockets   # requis une fois pour le multiplexage SSH
+ssh -i docs/Azure/ProxyMonetisation_key.pem -o IdentitiesOnly=yes \
+  -o Compression=no \
+  -o ControlMaster=auto -o ControlPath=~/.ssh/sockets/%r@%h:%p -o ControlPersist=10m \
+  -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
+  -o ExitOnForwardFailure=yes \
+  -L 8088:localhost:8088 azureuser@<IP_PUBLIQUE_AZURE>
 # puis ouvrez http://localhost:8088 dans votre navigateur
 ```
+> 💡 **Options expliquées** : `Compression no` (le serveur HTTP compresse déjà en Brotli — pas de double encodage), `ControlMaster` (réutilise la connexion pour les ssh/scp suivants), `ServerAlive*` (garder le tunnel vivant derrière le NAT Azure), `ExitOnForwardFailure` (échoue si le port 8088 est déjà pris — détecte un tunnel/conteneur local parasite). Le fichier `cmd_ssh_dashboard.txt` à la racine contient la version complète avec l'alternative `~/.ssh/config`.
 
 Connexion avec le `DASHBOARD_TOKEN` défini dans `.env` (généré avec `openssl rand -hex 32`).
 
@@ -121,6 +129,7 @@ Le dashboard permet de **modifier le `.env` directement** (section "Configuratio
 * **Honeygain — conflit de noms après redémarrage** : si un conteneur Honeygain redémarre (CI, restart), Honeygain refuse le device avec `Device with this name is already active` tant que l'ancienne session n'a pas expiré (quelques minutes). C'est temporaire et auto-résorbable — les devices repassent actifs d'eux-mêmes. Les noms `Docker-ISP-{1..4}-Honeygain` sont distincts et corrects.
 * **Validation IP par les plateformes** : Pawns et Honeygain peuvent **rejeter temporairement une nouvelle IP** (`tcpip-forward denied` / `Network Unusable`) alors que la passerelle est saine et que les autres providers (Repocket, PacketStream, Proxyrack) y sont actifs. C'est un délai de validation plateforme (souvent quelques heures), pas un bug de la stack.
 * **Port 8088 local** : si le dashboard affiche une **ancienne version** en navigation privée, c'est qu'un **ancien conteneur Docker local** (ou un ancien tunnel) occupe le port 8088 et sert une vieille image — pas la VM. Vérifiez `docker ps` / `ss -tlnp | grep 8088` et arrêtez la stack locale (`docker compose -p proxy_docker down`) pour libérer le port vers le tunnel SSH.
+* **Frontend périmé après redéploiement** : les assets sont désormais **hashés par contenu** (`app.<hash>.js` servis avec `max-age=1y, immutable`) — un redéploiement change le hash et le navigateur recharge automatiquement la nouvelle version. Si une page semble encore figée après un push, faites un **hard reload** (`Ctrl+Shift+R`) une fois ; l'`index.html` lui reste en revalidation (ETag).
 * **Rate limit API** : l'API Proxyrack (`/api/device/add`) limite à 5 requêtes/min. Avec 3 conteneurs qui s'enregistrent simultanément, les retries se télescopent — les devices finissent par s'enregistrer (ou le faire manuellement, espacé de 20s).
 
 ---
@@ -203,6 +212,7 @@ Tableau de bord Web : **[http://localhost:8088](http://localhost:8088)** — con
 | [`scripts/switch_provider.sh`](scripts/switch_provider.sh) | Bascule le fournisseur de monétisation actif (`none` = aucun provider) sur **toutes les passerelles actives**. |
 | [`scripts/test_proxy.sh`](scripts/test_proxy.sh) | Teste la connectivité du proxy amont (via le conteneur gateway-isp-{n} par défaut, `[gateway]` en 3e argument). |
 | [`scripts/benchmark.sh`](scripts/benchmark.sh) | Lance un benchmark en temps réel mesurant la RAM, le CPU et les PIDs de la stack. |
+| [`scripts/build-assets.mjs`](scripts/build-assets.mjs) | **Génère les assets versionnés** (cache-busting) : hache `app.js`/`style.css`/`fonts.css` dans `controller/public/dist/` et réécrit les références dans `index.html`. Lancé par `start.sh` et le CI avant chaque build. |
 
 ---
 
@@ -210,7 +220,7 @@ Tableau de bord Web : **[http://localhost:8088](http://localhost:8088)** — con
 
 Le fichier [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) déploie automatiquement chaque mise à jour sur votre VM Azure lors d'un `git push origin main` :
 1. Validation de `docker compose config` (locale, avec les profils `gw1` + les 5 types).
-2. `git fetch && reset --hard origin/main` sur la VM, puis `docker compose up -d --build --remove-orphans` avec les profils construits d'après `ENABLED_GATEWAYS` + `COMPOSE_PROFILES` du `.env` de la VM (sans down destructeur).
+2. `git fetch && reset --hard origin/main` sur la VM, puis **génération des assets versionnés** (`node scripts/build-assets.mjs`, fallback sur les fichiers `dist/` commités si `node` est absent), puis `docker compose up -d --build --remove-orphans` avec les profils construits d'après `ENABLED_GATEWAYS` + `COMPOSE_PROFILES` du `.env` de la VM (sans down destructeur).
 3. Attente du healthcheck du dashboard (max 90s) avant de déclarer le succès ; la santé des gateways est signalée sans bloquer (elle dépend des proxies amonts, pas du code).
 4. Nettoyage des images de plus de 72h uniquement.
 
@@ -234,3 +244,4 @@ Dans votre dépôt GitHub (***Settings ➔ Secrets and variables ➔ Actions***)
 * 📄 [Guide d'Intégration Passerelle ISP / Static Residential](docs/Integration_Passerelle_ISP_Residential.md) : Comparatif des fournisseurs de proxys et guide d'optimisation.
 * 📄 [Multi-Passerelles : 4 Pools d'IP](docs/Multi_Gateways_4_Proxies.md) : Dimensionnement, déploiement multi-proxys, profils compose et migration.
 * 📄 [Rapport de Recherche sur le Routage Docker](docs/Recherches/Routage_Docker_Monétisation_Bande_Passante.md) : Analyse des solutions Dongle 4G, VPN Dédiés et Proxies ISP.
+* 📄 [Optimisation Performance Web & Tunnel SSH](docs/Recherches/Optimisation_Performance_Web_et_Tunnel.md) : Audit de performance du dashboard derrière un tunnel transatlantique — SWR, compression Brotli, cache-busting, polices self-hosted, polling adaptatif, réglages SSH.
