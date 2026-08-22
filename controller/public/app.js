@@ -449,6 +449,149 @@ function renderGateways(gateways) {
 }
 
 // -----------------------------------------------------------------------------
+// 1c. Metrics temps réel (VM Performance)
+// -----------------------------------------------------------------------------
+const metricsGridEl = document.getElementById('metrics-grid');
+const metricsStatusBadgeEl = document.getElementById('metrics-status-badge');
+
+function formatBytes(bytes) {
+  if (!bytes || bytes <= 0) return '--';
+  const units = ['o', 'Ko', 'Mo', 'Go', 'To'];
+  let i = 0;
+  let v = bytes;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i += 1;
+  }
+  return `${v.toFixed(v >= 100 || i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+// Choisit la classe de couleur de la barre selon le seuil
+function barClass(percent) {
+  if (percent >= 90) return 'crit';
+  if (percent >= 70) return 'warn';
+  return '';
+}
+
+function renderMetrics(data) {
+  if (!metricsGridEl) return;
+  const host = data.host;
+  const containers = data.containers || {};
+
+  // Badge de statut : vert si l'hôte est collecté, orange sinon
+  if (metricsStatusBadgeEl) {
+    const active = Boolean(host);
+    metricsStatusBadgeEl.innerHTML = active
+      ? '<span class="dot-green"></span><span>Collecte active</span>'
+      : '<span class="dot-blue"></span><span>En attente du collecteur</span>';
+  }
+
+  metricsGridEl.innerHTML = '';
+
+  // --- Carte Hôte ---
+  const hostCard = document.createElement('div');
+  hostCard.className = 'metrics-card';
+  const hostTitle = document.createElement('div');
+  hostTitle.className = 'metric-label';
+  hostTitle.textContent = host?.hostname ? `VM · ${host.hostname}` : 'VM Hôte';
+  hostCard.appendChild(hostTitle);
+
+  if (host) {
+    const cpuPct = host.cpuPercent ?? 0;
+    const mem = host.memory || {};
+    const memPct = mem.usedPercent ?? 0;
+
+    const cpuRow = document.createElement('div');
+    cpuRow.className = 'metric-row';
+    cpuRow.innerHTML = `<span class="metric-label">CPU</span><span class="metric-value">${cpuPct.toFixed(1)} %</span>`;
+    hostCard.appendChild(cpuRow);
+
+    const cpuBar = document.createElement('div');
+    cpuBar.className = 'metric-bar';
+    const cpuFill = document.createElement('div');
+    cpuFill.className = `metric-bar-fill ${barClass(cpuPct)}`;
+    cpuFill.style.width = `${Math.min(cpuPct, 100)}%`;
+    cpuBar.appendChild(cpuFill);
+    hostCard.appendChild(cpuBar);
+
+    const memRow = document.createElement('div');
+    memRow.className = 'metric-row';
+    memRow.innerHTML = `<span class="metric-label">RAM</span><span class="metric-value">${memPct} %</span>`;
+    hostCard.appendChild(memRow);
+
+    const memBar = document.createElement('div');
+    memBar.className = 'metric-bar';
+    const memFill = document.createElement('div');
+    memFill.className = `metric-bar-fill ${barClass(memPct)}`;
+    memFill.style.width = `${Math.min(memPct, 100)}%`;
+    memBar.appendChild(memFill);
+    hostCard.appendChild(memBar);
+
+    if (typeof mem.usedBytes === 'number' && typeof mem.totalBytes === 'number') {
+      const detail = document.createElement('div');
+      detail.className = 'metric-detail';
+      detail.textContent = `${formatBytes(mem.usedBytes)} / ${formatBytes(mem.totalBytes)}`;
+      hostCard.appendChild(detail);
+    }
+  } else {
+    const empty = document.createElement('div');
+    empty.className = 'metrics-empty';
+    empty.textContent = 'Collecteur hôte indisponible.';
+    hostCard.appendChild(empty);
+  }
+  metricsGridEl.appendChild(hostCard);
+
+  // --- Carte Conteneurs ---
+  const containerCard = document.createElement('div');
+  containerCard.className = 'metrics-card';
+  const containerTitle = document.createElement('div');
+  containerTitle.className = 'metric-label';
+  containerTitle.textContent = 'Conteneurs (CPU / RAM)';
+  containerCard.appendChild(containerTitle);
+
+  const names = Object.keys(containers);
+  if (!names.length) {
+    const empty = document.createElement('div');
+    empty.className = 'metrics-empty';
+    empty.textContent = 'Aucun conteneur actif.';
+    containerCard.appendChild(empty);
+  } else {
+    const table = document.createElement('div');
+    table.className = 'metrics-container-table';
+    names.sort().forEach(name => {
+      const m = containers[name];
+      if (!m) return;
+      const row = document.createElement('div');
+      row.className = 'metrics-container-row';
+      const nameEl = document.createElement('span');
+      nameEl.className = 'metrics-container-name';
+      nameEl.textContent = name;
+      nameEl.title = name;
+      const usage = document.createElement('span');
+      usage.className = 'metrics-container-usage';
+      usage.textContent = `${m.cpuPercent?.toFixed(1) ?? '--'}% · ${m.memory?.percent ?? '--'}%`;
+      row.appendChild(nameEl);
+      row.appendChild(usage);
+      table.appendChild(row);
+    });
+    containerCard.appendChild(table);
+  }
+  metricsGridEl.appendChild(containerCard);
+}
+
+async function fetchMetrics() {
+  if (!state.authenticated) return;
+  try {
+    const res = await apiFetch('/api/metrics');
+    const data = await res.json();
+    renderMetrics(data);
+  } catch (err) {
+    console.error('Error fetching metrics:', err);
+    throw err;
+  }
+}
+
+// -----------------------------------------------------------------------------
 // 2. Render Provider Card (dans le contexte d'une passerelle)
 // -----------------------------------------------------------------------------
 function renderProviderCard(p, gwId) {
@@ -884,6 +1027,7 @@ document.getElementById('btn-clear-logs').addEventListener('click', () => {
 // Initialization
 // -----------------------------------------------------------------------------
 let statusPoller = null;
+let metricsPoller = null;
 
 async function initAuthenticated(hasStatus = false) {
   state.authenticated = true;
@@ -901,6 +1045,12 @@ async function initAuthenticated(hasStatus = false) {
   if (!statusPoller) {
     statusPoller = new AdaptivePoller(fetchStatus, { baseIntervalMs: 10000 });
     statusPoller.start();
+  }
+
+  // Polling des métriques temps réel (5 s, avec backoff adaptatif)
+  if (!metricsPoller) {
+    metricsPoller = new AdaptivePoller(fetchMetrics, { baseIntervalMs: 5000, maxIntervalMs: 30000 });
+    metricsPoller.start();
   }
 }
 

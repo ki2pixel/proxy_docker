@@ -62,6 +62,31 @@ services:
       retries: 3
       start_period: 10s
 
+  # --------------------------------------------------------------------------
+  # Métriques Hôte (CPU / RAM) — sidecar léger
+  # Monte /proc de l'hôte en read-only, aucun port exposé sur l'hôte.
+  # Consommé par le dashboard (GET /api/metrics, cache SWR).
+  # --------------------------------------------------------------------------
+  metrics-host:
+    build:
+      context: ./metrics-host
+      dockerfile: Dockerfile
+    image: metrics-host:latest
+    container_name: metrics-host
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+    mem_limit: 64m
+    cpus: 0.1
+    pids_limit: 64
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9100/metrics"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
   # ==========================================================================
   # PASSERELLE 1 — Proxy 1 (bloc GW1_* du .env, fallback clés historiques)
   # ==========================================================================

@@ -306,6 +306,38 @@ class DockerClient {
     }
   }
 
+  // Snapshot des stats d'un conteneur (CPU/RAM/réseau) — une requête,
+  // sans flux : /containers/{id}/stats?stream=false
+  async containerStats(id) {
+    const raw = await this.request('GET', `/containers/${id}/stats?stream=false`);
+    if (!raw || typeof raw !== 'object') return null;
+    const { cpu_stats: cpu = {}, precpu_stats: precpu = {}, memory_stats: mem = {}, networks = {}, name = '' } = raw;
+    const cpuDelta = (cpu.cpu_usage?.total_usage || 0) - (precpu.cpu_usage?.total_usage || 0);
+    const sysDelta = (cpu.system_cpu_usage || 0) - (precpu.system_cpu_usage || 0);
+    const onlineCpus = cpu.online_cpus || (cpu.cpu_usage?.percpu_usage || []).length || 1;
+    const cpuPercent = sysDelta > 0 && cpuDelta >= 0
+      ? Math.min(Math.max((cpuDelta / sysDelta) * onlineCpus * 100, 0), 100)
+      : 0;
+    const memUsage = mem.usage || 0;
+    const memLimit = mem.limit || 0;
+    let rxBytes = 0;
+    let txBytes = 0;
+    for (const iface of Object.values(networks || {})) {
+      rxBytes += iface.rx_bytes || 0;
+      txBytes += iface.tx_bytes || 0;
+    }
+    return {
+      name: String(name || '').replace(/^\//, ''),
+      cpuPercent: Math.round(cpuPercent * 10) / 10,
+      memory: {
+        usage: memUsage,
+        limit: memLimit,
+        percent: memLimit > 0 ? Math.round((memUsage / memLimit) * 100) : 0
+      },
+      network: { rxBytes, txBytes }
+    };
+  }
+
   async restartContainer(nameOrId) {
     return await this.request('POST', `/containers/${nameOrId}/restart?t=5`);
   }
@@ -416,6 +448,127 @@ class DockerClient {
 }
 
 const docker = new DockerClient();
+
+// -----------------------------------------------------------------------------
+// Métriques temps réel — snapshot agrégé (host + conteneurs)
+// -----------------------------------------------------------------------------
+// Le snapshot hôte est servi par le sidecar `metrics-host` (monte /proc de
+// l'hôte en read-only) ; les stats par conteneur viennent de l'API Docker.
+// Tous les appels réseau sont protégés par des timeouts (socket 10 s) et le
+// cache SWR ci-dessous ne bloque jamais la réponse HTTP.
+const METRICS_HOST_URL = 'http://metrics-host:9100/metrics';
+// Conteneurs à exclure des stats (dashboard, sidecar, caddy — bruit inutile)
+const METRICS_EXCLUDE = new Set(['isp-dashboard', 'metrics-host', 'isp-caddy']);
+
+async function fetchHostMetrics() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 3000);
+  try {
+    const res = await fetch(METRICS_HOST_URL, { signal: controller.signal });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Construit le payload de /api/metrics : hôte + stats par conteneur connu
+// (gateway + providers), mappé par nom avec l'état du cache status.
+async function buildMetricsSnapshot() {
+  const host = await fetchHostMetrics();
+  const containers = await docker.listContainers();
+  const running = (containers || []).filter(c => c.State === 'running');
+
+  // Préparer les noms de conteneurs connus (gateways + providers de toutes les
+  // passerelles, qu'elles soient actives ou non dans le .env)
+  const knownNames = new Set();
+  for (const gw of GATEWAYS) {
+    knownNames.add(gw.container);
+    for (const p of gw.providers) knownNames.add(p.container);
+  }
+
+  const include = running.filter(c => {
+    const names = c.Names || [];
+    return names.some(n => knownNames.has(n.replace(/^\//, ''))) && !names.some(n => METRICS_EXCLUDE.has(n.replace(/^\//, '')));
+  });
+
+  const containersMetrics = await Promise.allSettled(
+    include.map(c => docker.containerStats(c.Id))
+  );
+
+  const byName = {};
+  containersMetrics.forEach((result, i) => {
+    if (result.status !== 'fulfilled' || !result.value) return;
+    const m = result.value;
+    const name = (include[i].Names || []).map(n => n.replace(/^\//, ''))[0] || m.name;
+    byName[name] = {
+      cpuPercent: m.cpuPercent,
+      memory: m.memory,
+      network: m.network
+    };
+  });
+
+  return {
+    host,
+    containers: byName,
+    timestamp: Date.now()
+  };
+}
+
+class MetricsCache {
+  constructor(ttlMs) {
+    this.ttlMs = ttlMs;
+    this.cache = null;
+    this.lastUpdated = 0;
+    this.isFetching = false;
+  }
+
+  async get() {
+    const now = Date.now();
+    if (!this.cache) {
+      if (!this.isFetching) {
+        this.isFetching = true;
+        try {
+          this.cache = await buildMetricsSnapshot();
+          this.lastUpdated = Date.now();
+        } finally {
+          this.isFetching = false;
+        }
+      }
+      return this._payload();
+    }
+    // Stale-while-revalidate : réponse immédiate + refresh en arrière-plan
+    if (now - this.lastUpdated > this.ttlMs && !this.isFetching) {
+      this.isFetching = true;
+      buildMetricsSnapshot()
+        .then(data => {
+          this.cache = data;
+          this.lastUpdated = Date.now();
+        })
+        .catch(err => {
+          console.error(`[metricsCache] Refresh arrière-plan échoué : ${err.message}`);
+        })
+        .finally(() => {
+          this.isFetching = false;
+        });
+    }
+    return this._payload();
+  }
+
+  _payload() {
+    const ageMs = Date.now() - this.lastUpdated;
+    return {
+      data: this.cache,
+      ageMs,
+      isStale: ageMs > this.ttlMs
+    };
+  }
+}
+
+const METRICS_TTL_MS = 5000;
+const metricsCache = new MetricsCache(METRICS_TTL_MS);
 
 // -----------------------------------------------------------------------------
 // Provider Metadata (types de nœuds de monétisation, sans instance)
@@ -801,6 +954,17 @@ app.get('/api/status', requireAuth, async (req, res) => {
   res.json({
     meta: { dataAgeMs: ageMs, isStale },
     ...data
+  });
+});
+
+// 1b. Métriques temps réel (host + conteneurs) — cache SWR, TTL 5 s
+app.get('/api/metrics', requireAuth, async (req, res) => {
+  const { data, ageMs, isStale } = await metricsCache.get();
+  res.setHeader('X-Data-Age-ms', String(ageMs));
+  res.setHeader('Cache-Control', 'no-cache');
+  res.json({
+    meta: { dataAgeMs: ageMs, isStale },
+    ...(data || { host: null, containers: {} })
   });
 });
 

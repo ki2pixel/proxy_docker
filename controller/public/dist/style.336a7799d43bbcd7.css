@@ -465,6 +465,118 @@ body {
   gap: 18px;
 }
 
+/* ---------------------------------------------------------------------------
+   VM Performance Metrics (hôte + conteneurs)
+--------------------------------------------------------------------------- */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 18px;
+}
+
+.metrics-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.metric-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.metric-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.metric-value {
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.metric-bar {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.metric-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+  transition: width 0.5s ease;
+}
+
+.metric-bar-fill.warn {
+  background: linear-gradient(90deg, var(--accent-amber), #fbbf24);
+}
+
+.metric-bar-fill.crit {
+  background: linear-gradient(90deg, var(--accent-rose), #fb7185);
+}
+
+.metric-detail {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+}
+
+.metrics-container-table {
+  border-top: 1px dashed var(--border-subtle);
+  padding-top: 12px;
+}
+
+.metrics-container-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 0.8rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.metrics-container-row:last-child {
+  border-bottom: none;
+}
+
+.metrics-container-name {
+  font-family: var(--font-mono);
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metrics-container-usage {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.metrics-empty {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 30px 16px;
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
 /* Gateway card (multi-passerelles) : occupe toute la largeur, providers internes */
 .gateway-card {
   grid-column: 1 / -1;

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {
   redactSecrets, signSession, buildSessionCookie, parseSession,
   escapeEnvValue, parseEnv, applyEnvUpdates, clampInt,
-  CONTAINER_NAME_RE, ALLOWED_ACTIONS
+  CONTAINER_NAME_RE, ALLOWED_ACTIONS,
+  parseStat, cpuPercent, parseMemInfo
 } from '../lib.js';
 
 const SECRET = 'a'.repeat(64);
@@ -136,4 +137,53 @@ test('ALLOWED_ACTIONS contient start/stop/restart', () => {
   assert.ok(ALLOWED_ACTIONS.has('stop'));
   assert.ok(ALLOWED_ACTIONS.has('restart'));
   assert.ok(!ALLOWED_ACTIONS.has('delete'));
+});
+
+// -----------------------------------------------------------------------------
+// Métriques hôte : parseStat / cpuPercent / parseMemInfo
+// -----------------------------------------------------------------------------
+test('parseStat extrait les compteurs CPU agrégés', () => {
+  const stat = parseStat('cpu  100 20 300 500 30 5 3 0\ncpu0 10 2 30 50\nintr 123\n');
+  assert.deepEqual(stat, { user: 100, nice: 20, system: 300, idle: 500, iowait: 30, irq: 5, softirq: 3, steal: 0, total: 958 });
+});
+
+test('parseStat gère les lignes incomplètes (iowait/irq absents)', () => {
+  const stat = parseStat('cpu  100 20 300 500\ncpu0 10 2 30 50\n');
+  assert.equal(stat.user, 100);
+  assert.equal(stat.total, 920);
+});
+
+test('parseStat retourne null sans ligne cpu agrégée', () => {
+  assert.equal(parseStat('cpu0 10 2 30 50\n'), null);
+  assert.equal(parseStat(''), null);
+  assert.equal(parseStat(null), null);
+});
+
+test('cpuPercent calcule le pourcentage sur un intervalle', () => {
+  // Delta idle (500+30) -> (600+40) = 110 ; delta total = 958 -> 1970
+  // Usage = (1012 - 110) / 1012 = 89,1%
+  const prev = parseStat('cpu  100 20 300 500 30 5 3 0');
+  const curr = parseStat('cpu  500 100 700 600 40 15 10 5');
+  assert.ok(Math.abs(cpuPercent(prev, curr) - 89.13) < 0.01);
+});
+
+test('cpuPercent borne à 0 si les snapshots sont identiques ou invalides', () => {
+  const a = parseStat('cpu  100 20 300 500');
+  assert.equal(cpuPercent(a, a), 0);
+  assert.equal(cpuPercent(null, a), 0);
+  assert.equal(cpuPercent(a, null), 0);
+});
+
+test('parseMemInfo calcule usedPercent depuis MemTotal/MemAvailable', () => {
+  const meminfo = 'MemTotal:       1000000 kB\nMemFree:         200000 kB\nMemAvailable:    300000 kB\nBuffers:          50000 kB\n';
+  const m = parseMemInfo(meminfo);
+  assert.equal(m.totalBytes, 1000000 * 1024);
+  assert.equal(m.availableBytes, 300000 * 1024);
+  assert.equal(m.usedBytes, 700000 * 1024);
+  assert.equal(m.usedPercent, 70);
+});
+
+test('parseMemInfo retourne null sans MemAvailable (hôte non-Linux)', () => {
+  assert.equal(parseMemInfo('MemTotal:       1000000 kB\n'), null);
+  assert.equal(parseMemInfo(''), null);
 });

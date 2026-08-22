@@ -11,7 +11,7 @@
   <link rel="preload" href="/static/dist/fonts/outfit-latin-400.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/static/dist/fonts/jetbrains-mono-latin-400.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/dist/fonts.ba20d2728fbf180a.css">
-  <link rel="stylesheet" href="/static/dist/style.502d5d376ba13865.css">
+  <link rel="stylesheet" href="/static/dist/style.336a7799d43bbcd7.css">
 </head>
 <body>
   <div class="glow-bg">
@@ -165,6 +165,25 @@
         </div>
       </section>
 
+      <!-- VM Performance Metrics Section -->
+      <section class="section-container" id="metrics-section">
+        <div class="section-head">
+          <div class="section-title-group">
+            <h3>Performance de la VM</h3>
+            <p>CPU et RAM de l'hôte en temps réel, et consommation par conteneur</p>
+          </div>
+          <span class="badge-shield" id="metrics-status-badge">
+            <span class="dot-green"></span>
+            <span>Collecte active</span>
+          </span>
+        </div>
+
+        <div class="metrics-grid" id="metrics-grid">
+          <div class="skeleton-card"></div>
+          <div class="skeleton-card"></div>
+        </div>
+      </section>
+
       <!-- Configuration Section -->
       <section class="section-container">
         <div class="section-head">
@@ -220,6 +239,6 @@
   <!-- Toast Notification Container -->
   <div class="toast-container" id="toast-container"></div>
 
-  <script src="/static/dist/app.b93a2a01104519f9.js"></script>
+  <script src="/static/dist/app.c1b981f0765b9487.js"></script>
 </body>
 </html>

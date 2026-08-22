@@ -27,8 +27,9 @@ function sha256(content) {
 function replaceAssetRef(html, srcName, hashedName) {
   const base = srcName.replace(/\.[^.]+$/, ''); // app.js -> app
   const ext = path.extname(srcName);             // .js
-  // Remplace src="app.js" / href="style.css" (avec ou sans chemin dist déjà présent)
-  const re = new RegExp(`(src|href)="(?:/static/dist/)?${base}\\.(?:js|css)"`, 'g');
+  // Remplace src="app.js" / href="style.css" / refs déjà hashées (app.<hash>.js)
+  // — idempotent : un re-build sur un index.html déjà hashé réécrit les refs.
+  const re = new RegExp(`(src|href)="(?:/static/dist/)?${base}(?:\\.[0-9a-f]{16})?\\.(?:js|css)"`, 'g');
   return html.replace(re, `$1="/static/dist/${hashedName}"`);
 }
 

@@ -122,6 +122,49 @@ export const CONTAINER_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
 export const ALLOWED_ACTIONS = new Set(['start', 'stop', 'restart']);
 
 // -----------------------------------------------------------------------------
+// Métriques hôte (CPU / RAM) : calculs purs, testables
+// -----------------------------------------------------------------------------
+// parseStat : parse /proc/stat (cpu aggregate) -> { user, nice, system, idle, iowait, irq, softirq, steal, total }
+// Retourne null si le contenu ne contient pas de ligne "cpu " exploitable.
+export function parseStat(content) {
+  const line = String(content || '').split('\n').find(l => l.startsWith('cpu '));
+  if (!line) return null;
+  const nums = line.split(/\s+/).slice(1).map(Number);
+  if (nums.length < 4 || nums.some(n => !Number.isFinite(n))) return null;
+  const [user, nice, system, idle, iowait = 0, irq = 0, softirq = 0, steal = 0] = nums;
+  const total = user + nice + system + idle + iowait + irq + softirq + steal;
+  return { user, nice, system, idle, iowait, irq, softirq, steal, total };
+}
+
+// cpuPercent : usage CPU hôte sur un intervalle, à partir de deux snapshots
+// parseStat successifs. 0 si les snapshots sont invalides/identiques (évite div/0).
+export function cpuPercent(prev, curr) {
+  if (!prev || !curr || curr.total <= prev.total) return 0;
+  const idleDelta = (curr.idle + curr.iowait) - (prev.idle + prev.iowait);
+  const totalDelta = curr.total - prev.total;
+  if (totalDelta <= 0) return 0;
+  const pct = ((totalDelta - idleDelta) / totalDelta) * 100;
+  return Math.min(Math.max(pct, 0), 100);
+}
+
+// parseMemInfo : parse /proc/meminfo -> { totalBytes, availableBytes, usedBytes, usedPercent }
+// Retourne null si meminfo est absent (hôte non-Linux, fallback).
+export function parseMemInfo(content) {
+  const totalMatch = /^MemTotal:\s+(\d+) kB/m.exec(String(content || ''));
+  const availMatch = /^MemAvailable:\s+(\d+) kB/m.exec(String(content || ''));
+  if (!totalMatch || !availMatch) return null;
+  const totalBytes = Number(totalMatch[1]) * 1024;
+  const availableBytes = Number(availMatch[1]) * 1024;
+  const usedBytes = Math.max(totalBytes - availableBytes, 0);
+  return {
+    totalBytes,
+    availableBytes,
+    usedBytes,
+    usedPercent: totalBytes > 0 ? Math.round((usedBytes / totalBytes) * 100) : 0
+  };
+}
+
+// -----------------------------------------------------------------------------
 // Configuration du dashboard (.env) : clés connues, sensibilité, catégories
 // -----------------------------------------------------------------------------
 // Une clé est sensible si elle est secrète, éventuellement préfixée par passerelle (GW1_, GW2_...)
