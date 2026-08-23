@@ -579,7 +579,7 @@ const PROVIDER_TYPES = [
   { id: 'honeygain', name: 'Honeygain', base: 'honeygain', icon: '🍯', dashboard: 'https://dashboard.honeygain.com' },
   { id: 'pawns', name: 'Pawns.app', base: 'pawns', icon: '♟️', dashboard: 'https://pawns.app' },
   { id: 'packetstream', name: 'PacketStream', base: 'packetstream', icon: '📦', dashboard: 'https://packetstream.io' },
-  { id: 'earnfm', name: 'EarnFM', base: 'earnfm', icon: '💎', dashboard: 'https://app.earn.fm' }
+  { id: 'traffmonetizer', name: 'TraffMonetizer', base: 'traffmonetizer', icon: '💰', dashboard: 'https://app.traffmonetizer.com' }
 ];
 
 // -----------------------------------------------------------------------------

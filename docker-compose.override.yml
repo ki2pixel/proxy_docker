@@ -40,22 +40,22 @@ services:
   packetstream-1: *provider-limits
   pawns-1: *provider-limits
   repocket-1: *provider-limits
-  earnfm-1: *provider-limits
+  traffmonetizer-1: *provider-limits
 
   honeygain-2: *provider-limits
   packetstream-2: *provider-limits
   pawns-2: *provider-limits
   repocket-2: *provider-limits
-  earnfm-2: *provider-limits
+  traffmonetizer-2: *provider-limits
 
   honeygain-3: *provider-limits
   packetstream-3: *provider-limits
   pawns-3: *provider-limits
   repocket-3: *provider-limits
-  earnfm-3: *provider-limits
+  traffmonetizer-3: *provider-limits
 
   honeygain-4: *provider-limits
   packetstream-4: *provider-limits
   pawns-4: *provider-limits
   repocket-4: *provider-limits
-  earnfm-4: *provider-limits
+  traffmonetizer-4: *provider-limits

@@ -75,7 +75,7 @@ docker exec gateway-isp-2 curl -s https://ipinfo.io/json
 | Profil | Services activés |
 | :--- | :--- |
 | `gw{n}` | passerelle `gateway-isp-{n}` uniquement |
-| `gw{n}-{type}` | provider `<type>-{n}` (type ∈ earnfm, honeygain, packetstream, pawns, repocket) |
+| `gw{n}-{type}` | provider `<type>-{n}` (type ∈ traffmonetizer, honeygain, packetstream, pawns, repocket) |
 
 - `scripts/start.sh`, `scripts/switch_provider.sh` et le pipeline CI construisent ces
   profils automatiquement depuis `ENABLED_GATEWAYS` + `COMPOSE_PROFILES`.

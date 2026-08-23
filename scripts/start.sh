@@ -45,7 +45,7 @@ else
 fi
 
 # shellcheck disable=SC2086
-docker compose -p "$PROJECT_NAME" $COMPOSE_ARGS up -d --build
+docker compose -p "$PROJECT_NAME" $COMPOSE_ARGS up -d --build --remove-orphans
 
 echo ""
 echo "[*] Attente de la stabilisation des tunnels passerelles (healthcheck)..."

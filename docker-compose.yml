@@ -124,26 +124,27 @@ services:
     healthcheck: *gateway-healthcheck
 
   # --- Providers rattachés à la passerelle 1 (profil gw1 + type) ---
-  # EarnFM : client officiel (image earnfm/earnfm-client), un token API par
-  # passerelle (GW{n}_EARNFM_TOKEN, Settings → API Key sur app.earn.fm).
-  # NB: le client v2.3.3 dérive son deviceId de /etc/machine-id (constant si
-  # absent — tous les conteneurs auraient le même deviceId, seul 1 device
-  # s'enregistrerait). Le wrapper ci-dessous écrit une machine-id UNIQUE et
-  # stable par passerelle (GW{n}_EARNFM_MACHINE_ID) avant de lancer /app/main.
-  earnfm-1:
-    image: earnfm/earnfm-client:latest
-    container_name: earnfm-1
+  # TraffMonetizer : client officiel (image traffmonetizer/cli_v2, binaire
+  # statique sans shell) emballé dans un wrapper Alpine (traffmonetizer/).
+  # Un token global partagé (TRAFFMONETIZER_TOKEN, Dashboard → Token sur
+  # app.traffmonetizer.com) pour toutes les passerelles + un nom de device
+  # par passerelle (GW{n}_TRAFFMONETIZER_DEVICE_NAME) pour les identifier
+  # dans le panel. Le token reste en variable d'env (jamais dans la commande).
+  traffmonetizer-1:
+    build:
+      context: ./traffmonetizer
+      dockerfile: Dockerfile
+    image: isp-traffmonetizer:latest
+    container_name: traffmonetizer-1
     restart: unless-stopped
-    profiles: ["gw1-earnfm"]
+    profiles: ["gw1-traffmonetizer"]
     network_mode: "service:gateway-isp-1"
     depends_on:
       gateway-isp-1:
         condition: service_healthy
-    entrypoint: ["sh", "-c"]
-    command:
-      - 'echo "${GW1_EARNFM_MACHINE_ID:-earnfm-gw1}" > /etc/machine-id; exec /app/main'
     environment:
-      - EARNFM_TOKEN=${GW1_EARNFM_TOKEN:-${EARNFM_TOKEN:-}}
+      - TRAFFMONETIZER_TOKEN=${TRAFFMONETIZER_TOKEN:-}
+      - TRAFFMONETIZER_DEVICE_NAME=${GW1_TRAFFMONETIZER_DEVICE_NAME:-Docker-ISP-1-TraffMonetizer}
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64
@@ -244,20 +245,21 @@ services:
     logging: *default-logging
     healthcheck: *gateway-healthcheck
 
-  earnfm-2:
-    image: earnfm/earnfm-client:latest
-    container_name: earnfm-2
+  traffmonetizer-2:
+    build:
+      context: ./traffmonetizer
+      dockerfile: Dockerfile
+    image: isp-traffmonetizer:latest
+    container_name: traffmonetizer-2
     restart: unless-stopped
-    profiles: ["gw2-earnfm"]
+    profiles: ["gw2-traffmonetizer"]
     network_mode: "service:gateway-isp-2"
     depends_on:
       gateway-isp-2:
         condition: service_healthy
-    entrypoint: ["sh", "-c"]
-    command:
-      - 'echo "${GW2_EARNFM_MACHINE_ID:-earnfm-gw2}" > /etc/machine-id; exec /app/main'
     environment:
-      - EARNFM_TOKEN=${GW2_EARNFM_TOKEN:-}
+      - TRAFFMONETIZER_TOKEN=${TRAFFMONETIZER_TOKEN:-}
+      - TRAFFMONETIZER_DEVICE_NAME=${GW2_TRAFFMONETIZER_DEVICE_NAME:-Docker-ISP-2-TraffMonetizer}
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64
@@ -358,20 +360,21 @@ services:
     logging: *default-logging
     healthcheck: *gateway-healthcheck
 
-  earnfm-3:
-    image: earnfm/earnfm-client:latest
-    container_name: earnfm-3
+  traffmonetizer-3:
+    build:
+      context: ./traffmonetizer
+      dockerfile: Dockerfile
+    image: isp-traffmonetizer:latest
+    container_name: traffmonetizer-3
     restart: unless-stopped
-    profiles: ["gw3-earnfm"]
+    profiles: ["gw3-traffmonetizer"]
     network_mode: "service:gateway-isp-3"
     depends_on:
       gateway-isp-3:
         condition: service_healthy
-    entrypoint: ["sh", "-c"]
-    command:
-      - 'echo "${GW3_EARNFM_MACHINE_ID:-earnfm-gw3}" > /etc/machine-id; exec /app/main'
     environment:
-      - EARNFM_TOKEN=${GW3_EARNFM_TOKEN:-}
+      - TRAFFMONETIZER_TOKEN=${TRAFFMONETIZER_TOKEN:-}
+      - TRAFFMONETIZER_DEVICE_NAME=${GW3_TRAFFMONETIZER_DEVICE_NAME:-Docker-ISP-3-TraffMonetizer}
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64
@@ -472,20 +475,21 @@ services:
     logging: *default-logging
     healthcheck: *gateway-healthcheck
 
-  earnfm-4:
-    image: earnfm/earnfm-client:latest
-    container_name: earnfm-4
+  traffmonetizer-4:
+    build:
+      context: ./traffmonetizer
+      dockerfile: Dockerfile
+    image: isp-traffmonetizer:latest
+    container_name: traffmonetizer-4
     restart: unless-stopped
-    profiles: ["gw4-earnfm"]
+    profiles: ["gw4-traffmonetizer"]
     network_mode: "service:gateway-isp-4"
     depends_on:
       gateway-isp-4:
         condition: service_healthy
-    entrypoint: ["sh", "-c"]
-    command:
-      - 'echo "${GW4_EARNFM_MACHINE_ID:-earnfm-gw4}" > /etc/machine-id; exec /app/main'
     environment:
-      - EARNFM_TOKEN=${GW4_EARNFM_TOKEN:-}
+      - TRAFFMONETIZER_TOKEN=${TRAFFMONETIZER_TOKEN:-}
+      - TRAFFMONETIZER_DEVICE_NAME=${GW4_TRAFFMONETIZER_DEVICE_NAME:-Docker-ISP-4-TraffMonetizer}
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64

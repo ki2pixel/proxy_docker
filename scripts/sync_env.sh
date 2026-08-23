@@ -148,7 +148,7 @@ ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SERVER_IP}" "cd ${REMOTE_DIR} && \
   GWS=\$(grep -E '^ENABLED_GATEWAYS=' .env | cut -d= -f2 | tr ',' ' ' | tr -d '\"' | tr -s ' ') ; \
   [ -z \"\$GWS\" ] && GWS=1 ; \
   TYPES=\$(grep -E '^COMPOSE_PROFILES=' .env | cut -d= -f2 | tr -d '\"' | tr ',' ' ' | tr -s ' ') ; \
-  if [ \"\$TYPES\" = \"all\" ]; then TYPES='earnfm honeygain packetstream pawns repocket'; elif [ \"\$TYPES\" = \"none\" ]; then TYPES=''; fi ; \
+  if [ \"\$TYPES\" = \"all\" ]; then TYPES='traffmonetizer honeygain packetstream pawns repocket'; elif [ \"\$TYPES\" = \"none\" ]; then TYPES=''; fi ; \
   ARGS='' ; \
   for g in \$GWS; do ARGS=\"\$ARGS --profile gw\${g}\"; for t in \$TYPES; do ARGS=\"\$ARGS --profile gw\${g}-\${t}\"; done; done ; \
   echo \"Profils compose :\$ARGS\" ; \

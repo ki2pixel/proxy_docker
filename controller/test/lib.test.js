@@ -18,8 +18,8 @@ test('redactSecrets masque les valeurs de clés secrètes', () => {
     'ISP_PROXY_PASS="***"'
   );
   assert.equal(
-    redactSecrets('EARNFM_TOKEN="jeton-earnfm-1234567890"'),
-    'EARNFM_TOKEN="***"'
+    redactSecrets('TRAFFMONETIZER_TOKEN="jeton-traffmonetizer-1234567890"'),
+    'TRAFFMONETIZER_TOKEN="***"'
   );
 });
 
