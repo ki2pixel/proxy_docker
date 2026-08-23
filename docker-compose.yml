@@ -14,10 +14,11 @@
 # ==============================================================================
 
 x-logging: &default-logging
-  driver: json-file
+  driver: local
   options:
-    max-size: "10m"
-    max-file: "3"
+    max-size: "2m"
+    max-file: "2"
+    compress: "true"
 
 x-gateway-healthcheck: &gateway-healthcheck
   test: ["CMD", "/usr/local/bin/healthcheck.sh"]
@@ -51,6 +52,10 @@ services:
       - COMPOSE_PROFILES=${COMPOSE_PROFILES:-repocket}
       - DASHBOARD_TOKEN=${DASHBOARD_TOKEN:?DASHBOARD_TOKEN doit être défini dans .env}
       - DASHBOARD_SECRET=${DASHBOARD_SECRET:?DASHBOARD_SECRET doit être défini dans .env}
+      - NODE_OPTIONS=--max-old-space-size=24
+    mem_limit: 128m
+    cpus: 0.2
+    pids_limit: 128
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./docker-compose.yml:/workspace/docker-compose.yml:ro
@@ -112,13 +117,15 @@ services:
       - ISP_PROXY_USER=${GW1_ISP_PROXY_USER:-${ISP_PROXY_USER:-}}
       - ISP_PROXY_PASS=${GW1_ISP_PROXY_PASS:-${ISP_PROXY_PASS:-}}
       - LOGLEVEL=${GATEWAY_LOGLEVEL:-warning}
-    mem_limit: 256m
-    cpus: 0.5
-    pids_limit: 256
+    mem_limit: 64m
+    cpus: 0.40
+    pids_limit: 128
     logging: *default-logging
     healthcheck: *gateway-healthcheck
 
   # --- Providers rattachés à la passerelle 1 (profil gw1 + type) ---
+  # Proxyrack : désactivé (profil "never") — pas rentable, désactivé sur toutes
+  # les VM. Reversibilité : supprimer le profil "never" pour le réactiver.
   proxyrack-1:
     build:
       context: ./proxyrack
@@ -126,7 +133,7 @@ services:
     image: proxyrack-pop:latest
     container_name: proxyrack-1
     restart: unless-stopped
-    profiles: ["gw1-proxyrack"]
+    profiles: ["never"]
     network_mode: "service:gateway-isp-1"
     depends_on:
       gateway-isp-1:
@@ -137,9 +144,9 @@ services:
       - DEVICE_NAME=${GW1_DEVICE_NAME:-${DEVICE_NAME:-Docker-ISP-1-Proxyrack}}
     volumes:
       - proxyrack_data_1:/app/data
-    mem_limit: 512m
-    cpus: 1.0
-    pids_limit: 256
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
     logging: *default-logging
     healthcheck:
       test: ["CMD", "pgrep", "-f", "script.js"]
@@ -158,9 +165,9 @@ services:
       gateway-isp-1:
         condition: service_healthy
     command: ["-tou-accept", "-email", "${GW1_HONEYGAIN_EMAIL:-${HONEYGAIN_EMAIL:-}}", "-pass", "${GW1_HONEYGAIN_PASSWORD:-${HONEYGAIN_PASSWORD:-}}", "-device", "${GW1_HONEYGAIN_DEVICE_NAME:-${HONEYGAIN_DEVICE_NAME:-Docker-ISP-1-Honeygain}}"]
-    mem_limit: 512m
-    cpus: 1.0
-    pids_limit: 256
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
     logging: *default-logging
 
   packetstream-1:
@@ -174,9 +181,9 @@ services:
         condition: service_healthy
     environment:
       - CID=${GW1_PACKETSTREAM_CID:-${PACKETSTREAM_CID:-}}
-    mem_limit: 512m
-    cpus: 1.0
-    pids_limit: 256
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
     logging: *default-logging
 
   pawns-1:
@@ -189,9 +196,9 @@ services:
       gateway-isp-1:
         condition: service_healthy
     command: ["-email=${GW1_PAWNS_EMAIL:-${PAWNS_EMAIL:-}}", "-password=${GW1_PAWNS_PASSWORD:-${PAWNS_PASSWORD:-}}", "-device-name=${GW1_PAWNS_DEVICE_NAME:-${PAWNS_DEVICE_NAME:-Docker-ISP-1-Pawns}}", "-accept-tos"]
-    mem_limit: 512m
-    cpus: 1.0
-    pids_limit: 256
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
     logging: *default-logging
 
   repocket-1:
@@ -206,9 +213,10 @@ services:
     environment:
       - RP_EMAIL=${GW1_REPOCKET_EMAIL:-${REPOCKET_EMAIL:-}}
       - RP_API_KEY=${GW1_REPOCKET_API_KEY:-${REPOCKET_API_KEY:-}}
-    mem_limit: 512m
-    cpus: 1.0
-    pids_limit: 256
+      - NODE_OPTIONS=--max-old-space-size=24
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
     logging: *default-logging
 
   # ==========================================================================
@@ -236,9 +244,9 @@ services:
       - ISP_PROXY_USER=${GW2_ISP_PROXY_USER:-}
       - ISP_PROXY_PASS=${GW2_ISP_PROXY_PASS:-}
       - LOGLEVEL=${GATEWAY_LOGLEVEL:-warning}
-    mem_limit: 256m
-    cpus: 0.5
-    pids_limit: 256
+    mem_limit: 64m
+    cpus: 0.40
+    pids_limit: 128
     logging: *default-logging
     healthcheck: *gateway-healthcheck
 
@@ -249,7 +257,7 @@ services:
     image: proxyrack-pop:latest
     container_name: proxyrack-2
     restart: unless-stopped
-    profiles: ["gw2-proxyrack"]
+    profiles: ["never"]
     network_mode: "service:gateway-isp-2"
     depends_on:
       gateway-isp-2:
@@ -260,9 +268,9 @@ services:
       - DEVICE_NAME=${GW2_DEVICE_NAME:-Docker-ISP-2-Proxyrack}
     volumes:
       - proxyrack_data_2:/app/data
-    mem_limit: 512m
-    cpus: 1.0
-    pids_limit: 256
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
     logging: *default-logging
     healthcheck:
       test: ["CMD", "pgrep", "-f", "script.js"]
@@ -281,9 +289,9 @@ services:
       gateway-isp-2:
         condition: service_healthy
     command: ["-tou-accept", "-email", "${GW2_HONEYGAIN_EMAIL:-}", "-pass", "${GW2_HONEYGAIN_PASSWORD:-}", "-device", "${GW2_HONEYGAIN_DEVICE_NAME:-Docker-ISP-2-Honeygain}"]
-    mem_limit: 512m
-    cpus: 1.0
-    pids_limit: 256
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
     logging: *default-logging
 
   packetstream-2:
@@ -297,9 +305,9 @@ services:
         condition: service_healthy
     environment:
       - CID=${GW2_PACKETSTREAM_CID:-}
-    mem_limit: 512m
-    cpus: 1.0
-    pids_limit: 256
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
     logging: *default-logging
 
   pawns-2:
@@ -312,9 +320,9 @@ services:
       gateway-isp-2:
         condition: service_healthy
     command: ["-email=${GW2_PAWNS_EMAIL:-}", "-password=${GW2_PAWNS_PASSWORD:-}", "-device-name=${GW2_PAWNS_DEVICE_NAME:-Docker-ISP-2-Pawns}", "-accept-tos"]
-    mem_limit: 512m
-    cpus: 1.0
-    pids_limit: 256
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
     logging: *default-logging
 
   repocket-2:
@@ -329,9 +337,10 @@ services:
     environment:
       - RP_EMAIL=${GW2_REPOCKET_EMAIL:-}
       - RP_API_KEY=${GW2_REPOCKET_API_KEY:-}
-    mem_limit: 512m
-    cpus: 1.0
-    pids_limit: 256
+      - NODE_OPTIONS=--max-old-space-size=24
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
     logging: *default-logging
 
   # ==========================================================================
@@ -359,9 +368,9 @@ services:
       - ISP_PROXY_USER=${GW3_ISP_PROXY_USER:-}
       - ISP_PROXY_PASS=${GW3_ISP_PROXY_PASS:-}
       - LOGLEVEL=${GATEWAY_LOGLEVEL:-warning}
-    mem_limit: 256m
-    cpus: 0.5
-    pids_limit: 256
+    mem_limit: 64m
+    cpus: 0.40
+    pids_limit: 128
     logging: *default-logging
     healthcheck: *gateway-healthcheck
 
@@ -372,7 +381,7 @@ services:
     image: proxyrack-pop:latest
     container_name: proxyrack-3
     restart: unless-stopped
-    profiles: ["gw3-proxyrack"]
+    profiles: ["never"]
     network_mode: "service:gateway-isp-3"
     depends_on:
       gateway-isp-3:
@@ -383,9 +392,9 @@ services:
       - DEVICE_NAME=${GW3_DEVICE_NAME:-Docker-ISP-3-Proxyrack}
     volumes:
       - proxyrack_data_3:/app/data
-    mem_limit: 512m
-    cpus: 1.0
-    pids_limit: 256
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
     logging: *default-logging
     healthcheck:
       test: ["CMD", "pgrep", "-f", "script.js"]
@@ -404,9 +413,9 @@ services:
       gateway-isp-3:
         condition: service_healthy
     command: ["-tou-accept", "-email", "${GW3_HONEYGAIN_EMAIL:-}", "-pass", "${GW3_HONEYGAIN_PASSWORD:-}", "-device", "${GW3_HONEYGAIN_DEVICE_NAME:-Docker-ISP-3-Honeygain}"]
-    mem_limit: 512m
-    cpus: 1.0
-    pids_limit: 256
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
     logging: *default-logging
 
   packetstream-3:
@@ -420,9 +429,9 @@ services:
         condition: service_healthy
     environment:
       - CID=${GW3_PACKETSTREAM_CID:-}
-    mem_limit: 512m
-    cpus: 1.0
-    pids_limit: 256
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
     logging: *default-logging
 
   pawns-3:
@@ -435,9 +444,9 @@ services:
       gateway-isp-3:
         condition: service_healthy
     command: ["-email=${GW3_PAWNS_EMAIL:-}", "-password=${GW3_PAWNS_PASSWORD:-}", "-device-name=${GW3_PAWNS_DEVICE_NAME:-Docker-ISP-3-Pawns}", "-accept-tos"]
-    mem_limit: 512m
-    cpus: 1.0
-    pids_limit: 256
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
     logging: *default-logging
 
   repocket-3:
@@ -452,9 +461,10 @@ services:
     environment:
       - RP_EMAIL=${GW3_REPOCKET_EMAIL:-}
       - RP_API_KEY=${GW3_REPOCKET_API_KEY:-}
-    mem_limit: 512m
-    cpus: 1.0
-    pids_limit: 256
+      - NODE_OPTIONS=--max-old-space-size=24
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
     logging: *default-logging
 
   # ==========================================================================
@@ -482,9 +492,9 @@ services:
       - ISP_PROXY_USER=${GW4_ISP_PROXY_USER:-}
       - ISP_PROXY_PASS=${GW4_ISP_PROXY_PASS:-}
       - LOGLEVEL=${GATEWAY_LOGLEVEL:-warning}
-    mem_limit: 256m
-    cpus: 0.5
-    pids_limit: 256
+    mem_limit: 64m
+    cpus: 0.40
+    pids_limit: 128
     logging: *default-logging
     healthcheck: *gateway-healthcheck
 
@@ -495,7 +505,7 @@ services:
     image: proxyrack-pop:latest
     container_name: proxyrack-4
     restart: unless-stopped
-    profiles: ["gw4-proxyrack"]
+    profiles: ["never"]
     network_mode: "service:gateway-isp-4"
     depends_on:
       gateway-isp-4:
@@ -506,9 +516,9 @@ services:
       - DEVICE_NAME=${GW4_DEVICE_NAME:-Docker-ISP-4-Proxyrack}
     volumes:
       - proxyrack_data_4:/app/data
-    mem_limit: 512m
-    cpus: 1.0
-    pids_limit: 256
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
     logging: *default-logging
     healthcheck:
       test: ["CMD", "pgrep", "-f", "script.js"]
@@ -527,9 +537,9 @@ services:
       gateway-isp-4:
         condition: service_healthy
     command: ["-tou-accept", "-email", "${GW4_HONEYGAIN_EMAIL:-}", "-pass", "${GW4_HONEYGAIN_PASSWORD:-}", "-device", "${GW4_HONEYGAIN_DEVICE_NAME:-Docker-ISP-4-Honeygain}"]
-    mem_limit: 512m
-    cpus: 1.0
-    pids_limit: 256
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
     logging: *default-logging
 
   packetstream-4:
@@ -543,9 +553,9 @@ services:
         condition: service_healthy
     environment:
       - CID=${GW4_PACKETSTREAM_CID:-}
-    mem_limit: 512m
-    cpus: 1.0
-    pids_limit: 256
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
     logging: *default-logging
 
   pawns-4:
@@ -558,9 +568,9 @@ services:
       gateway-isp-4:
         condition: service_healthy
     command: ["-email=${GW4_PAWNS_EMAIL:-}", "-password=${GW4_PAWNS_PASSWORD:-}", "-device-name=${GW4_PAWNS_DEVICE_NAME:-Docker-ISP-4-Pawns}", "-accept-tos"]
-    mem_limit: 512m
-    cpus: 1.0
-    pids_limit: 256
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
     logging: *default-logging
 
   repocket-4:
@@ -575,9 +585,10 @@ services:
     environment:
       - RP_EMAIL=${GW4_REPOCKET_EMAIL:-}
       - RP_API_KEY=${GW4_REPOCKET_API_KEY:-}
-    mem_limit: 512m
-    cpus: 1.0
-    pids_limit: 256
+      - NODE_OPTIONS=--max-old-space-size=24
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
     logging: *default-logging
 
   # --------------------------------------------------------------------------

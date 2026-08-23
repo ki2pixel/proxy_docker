@@ -23,6 +23,7 @@ const PORT = Number.isInteger(rawPort) && rawPort > 0 ? rawPort : 8080;
 const APP_DIR = process.env.APP_DIR || '/workspace';
 const PROJECT_NAME = 'proxy_docker';
 const COMPOSE_FILE = path.join(APP_DIR, 'docker-compose.yml');
+const COMPOSE_OVERRIDE = path.join(APP_DIR, 'docker-compose.override.yml');
 const ENV_PATH = path.join(APP_DIR, '.env');
 
 // -----------------------------------------------------------------------------
@@ -645,17 +646,23 @@ function invalidateStatusCache() {
 // -----------------------------------------------------------------------------
 // Helper: Exécution docker compose (sans shell)
 // -----------------------------------------------------------------------------
+// L'override docker-compose.override.yml (petites VM : limites réduites) est
+// ajouté s'il existe — il est ignoré par compose quand -f est passé explicitement.
+function composeArgs() {
+  const args = ['compose', '-p', PROJECT_NAME, '-f', COMPOSE_FILE];
+  if (fs.existsSync(COMPOSE_OVERRIDE)) args.push('-f', COMPOSE_OVERRIDE);
+  return args;
+}
+
 async function composeUp(serviceId) {
   await execFileAsync('docker', [
-    'compose', '-p', PROJECT_NAME, '-f', COMPOSE_FILE,
-    '--profile', serviceId, 'up', '-d', serviceId
+    ...composeArgs(), '--profile', serviceId, 'up', '-d', serviceId
   ], { timeout: 120_000 });
 }
 
 async function composeRestartGateway(gw) {
   await execFileAsync('docker', [
-    'compose', '-p', PROJECT_NAME, '-f', COMPOSE_FILE,
-    'restart', gw.container
+    ...composeArgs(), 'restart', gw.container
   ], { timeout: 120_000 });
 }
 
@@ -917,7 +924,7 @@ app.put('/api/config', requireAuth, requireCsrf, async (req, res) => {
     try {
       log('Application de la configuration : docker compose up -d ...', 'INFO');
       await execFileAsync('docker', [
-        'compose', '-p', PROJECT_NAME, '-f', COMPOSE_FILE, 'up', '-d'
+        ...composeArgs(), 'up', '-d'
       ], { timeout: 120_000 });
       applied = true;
       log('Configuration appliquée avec succès', 'INFO');

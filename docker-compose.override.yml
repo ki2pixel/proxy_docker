@@ -1,0 +1,58 @@
+# ==============================================================================
+# Override Compose pour petites VM (1 vCPU / 1 Go RAM — ex. Tierhive)
+# ------------------------------------------------------------------------------
+# ALIGNÉ sur la base docker-compose.yml (2026-08) : passerelles 64m/0.40cpu,
+# providers 96m/0.25cpu — les quotas optimisés pour la VM Azure B2ats v2
+# s'appliquent ainsi aussi aux autres petites VM, même si leur copie du dépôt
+# est antérieure à la mise à jour. Chargé AUTOMATIQUEMENT par `docker compose
+# up` (fichier dans le même répertoire que docker-compose.yml), y compris par
+# scripts/start.sh et le dashboard (composeArgs).
+#
+# ⚠️ NE PAS relever les limites ici : la base de docker-compose.yml EST le
+#    plafond cible pour 1 Go de RAM. Usage réel mesuré (Azure, 22 containers) :
+#    passerelles 10-12 MiB, providers 3-22 MiB -> marges de 3-8x avec ces quotas.
+#    Les services proxyrack (profil "never") sont volontairement exclus.
+# ==============================================================================
+
+services:
+  # --- Passerelles : 64m / 0.40cpu / 128 pids (identique à la base) ---
+  gateway-isp-1:
+    mem_limit: 64m
+    cpus: 0.40
+    pids_limit: 128
+  gateway-isp-2:
+    mem_limit: 64m
+    cpus: 0.40
+    pids_limit: 128
+  gateway-isp-3:
+    mem_limit: 64m
+    cpus: 0.40
+    pids_limit: 128
+  gateway-isp-4:
+    mem_limit: 64m
+    cpus: 0.40
+    pids_limit: 128
+
+  # --- Providers : 96m / 0.25cpu / 64 pids (identique à la base) ---
+  honeygain-1: &provider-limits
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
+  packetstream-1: *provider-limits
+  pawns-1: *provider-limits
+  repocket-1: *provider-limits
+
+  honeygain-2: *provider-limits
+  packetstream-2: *provider-limits
+  pawns-2: *provider-limits
+  repocket-2: *provider-limits
+
+  honeygain-3: *provider-limits
+  packetstream-3: *provider-limits
+  pawns-3: *provider-limits
+  repocket-3: *provider-limits
+
+  honeygain-4: *provider-limits
+  packetstream-4: *provider-limits
+  pawns-4: *provider-limits
+  repocket-4: *provider-limits

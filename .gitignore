@@ -1,5 +1,6 @@
 node_modules/
 .env
+.env2
 *.log
 .DS_Store
 *.pem
@@ -7,3 +8,5 @@ node_modules/
 docs/Azure/*.pem
 .commandcode/
 cmd_ssh_dashboard.txt
+/docs/Tierhive/*.pub
+/docs/Tierhive/*.txt

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Script de synchronisation du fichier .env vers le serveur distant
-# Usage : ./scripts/sync_env.sh <SERVER_IP> <CHEMIN_CLE_SSH> [UTILISATEUR] [APP_DIR_REMOTE]
+# Script de synchronisation d'un fichier .env vers le serveur distant
+# Usage : ./scripts/sync_env.sh <SERVER_IP> <CHEMIN_CLE_SSH> [UTILISATEUR] [APP_DIR_REMOTE] [ENV_SOURCE]
+#   ENV_SOURCE : fichier .env local à synchroniser (défaut : .env)
+#   Exemple multi-VM : .env pour Azure, .env2 pour Tierhive
 # ==============================================================================
 set -euo pipefail
 
@@ -12,10 +14,11 @@ cd "$PROJECT_ROOT"
 
 if [ $# -lt 2 ]; then
     echo "Usage :"
-    echo "  ./scripts/sync_env.sh <SERVER_IP> <CHEMIN_CLE_SSH> [UTILISATEUR] [APP_DIR_REMOTE]"
+    echo "  ./scripts/sync_env.sh <SERVER_IP> <CHEMIN_CLE_SSH> [UTILISATEUR] [APP_DIR_REMOTE] [ENV_SOURCE]"
     echo ""
     echo "Exemple :"
     echo "  ./scripts/sync_env.sh 203.0.113.10 ~/.ssh/ma_cle.pem azureuser /opt/proxy_docker"
+    echo "  ./scripts/sync_env.sh 203.0.113.10 ~/.ssh/ma_cle.pem azureuser /opt/proxy_docker .env2"
     echo ""
     echo "⚠️  Prérequis : le serveur doit être dans votre known_hosts :"
     echo "  ssh-keyscan -H <SERVER_IP> >> ~/.ssh/known_hosts"
@@ -26,6 +29,7 @@ SERVER_IP="$1"
 KEY_PATH="$2"
 SSH_USER="${3:-azureuser}"
 REMOTE_DIR="${4:-/opt/proxy_docker}"
+ENV_SOURCE="${5:-.env}"
 KNOWN_HOSTS="${KNOWN_HOSTS:-$HOME/.ssh/known_hosts}"
 
 if [ ! -f "$KEY_PATH" ]; then
@@ -33,17 +37,24 @@ if [ ! -f "$KEY_PATH" ]; then
     exit 1
 fi
 
-if [ ! -f .env ]; then
-    echo "[-] Fichier .env local introuvable."
+if [ ! -f "$ENV_SOURCE" ]; then
+    echo "[-] Fichier $ENV_SOURCE local introuvable."
+    exit 1
+fi
+
+# Refuser de synchroniser un fichier contenant encore des placeholders
+if grep -qE "CHANGEME_|votre_" "$ENV_SOURCE"; then
+    echo "[-] ERREUR : $ENV_SOURCE contient encore des valeurs placeholder (CHANGEME_/votre_)."
+    echo "[-] Renseignez les valeurs avant de synchroniser."
     exit 1
 fi
 
 # ⚠️ Avertissement : le dashboard permet d'éditer le .env de la VM directement.
-# Ce script ÉCRASE le .env distant avec la copie locale.
+# Ce script ÉCRASE le .env distant avec la copie locale ($ENV_SOURCE).
 if [ -n "${SYNC_FORCE:-}" ]; then
     echo "[!] SYNC_FORCE défini : écrasement du .env distant sans confirmation."
 else
-    echo "⚠️  ATTENTION : ce script ÉCRASE le .env distant."
+    echo "⚠️  ATTENTION : ce script ÉCRASE le .env distant avec $ENV_SOURCE."
     echo "    Si vous avez modifié la configuration via le dashboard (éditeur .env),"
     echo "    ces changements distants seront PERDUS."
     read -r -p "Continuer ? (oui/non) : " CONFIRM
@@ -78,25 +89,28 @@ if ! ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SERVER_IP}" "echo OK" > /dev/null 2>&1;
 fi
 echo "[✓] Connexion SSH vérifiée."
 
-PERMS=$(stat -c '%a' .env 2>/dev/null || stat -f '%Lp' .env 2>/dev/null || echo "?")
+PERMS=$(stat -c '%a' "$ENV_SOURCE" 2>/dev/null || stat -f '%Lp' "$ENV_SOURCE" 2>/dev/null || echo "?")
 if [ "$PERMS" != "600" ] && [ "$PERMS" != "400" ] && [ "$PERMS" != "?" ]; then
-    echo "[!] Le .env est lisible par d'autres ($PERMS). Correction en 600..."
-    chmod 600 .env
+    echo "[!] Le $ENV_SOURCE est lisible par d'autres ($PERMS). Correction en 600..."
+    chmod 600 "$ENV_SOURCE"
 fi
 
 echo "========================================================"
-echo "🔄 Synchronisation du fichier .env vers $SERVER_IP"
+echo "🔄 Synchronisation du fichier $ENV_SOURCE vers $SERVER_IP"
 echo "========================================================"
 
-# 1. Envoi sécurisé du .env via SCP (avec vérification du known_hosts)
-echo "[1/2] Transfert sécurisé du fichier .env..."
-scp "${SCP_OPTS[@]}" .env "${SSH_USER}@${SERVER_IP}:/tmp/.env.proxy_docker"
+# 1. Envoi sécurisé du $ENV_SOURCE via SCP (avec vérification du known_hosts)
+echo "[1/2] Transfert sécurisé du fichier $ENV_SOURCE..."
+scp "${SCP_OPTS[@]}" "$ENV_SOURCE" "${SSH_USER}@${SERVER_IP}:/tmp/.env.proxy_docker"
 
 # 2. Déplacement et redémarrage des conteneurs
 echo "[2/2] Application de la nouvelle configuration et redémarrage..."
 # Construit les profils gw{n} + gw{n}-{type} d'après le .env synchronisé
 # (même logique que scripts/lib.sh, exécutée côté VM après copie)
-ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SERVER_IP}" "sudo cp /tmp/.env.proxy_docker ${REMOTE_DIR}/.env && sudo chown -R ${SSH_USER}:${SSH_USER} ${REMOTE_DIR} && rm -f /tmp/.env.proxy_docker && cd ${REMOTE_DIR} && \
+# sudo est requis si l'utilisateur SSH n'est pas root (ex. azureuser)
+SUDO_PREFIX=""
+[ "$SSH_USER" != "root" ] && SUDO_PREFIX="sudo "
+ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SERVER_IP}" "${SUDO_PREFIX}cp /tmp/.env.proxy_docker ${REMOTE_DIR}/.env && ${SUDO_PREFIX}chown -R ${SSH_USER}:${SSH_USER} ${REMOTE_DIR} && rm -f /tmp/.env.proxy_docker && cd ${REMOTE_DIR} && \
   GWS=\$(grep -E '^ENABLED_GATEWAYS=' .env | cut -d= -f2 | tr ',' ' ' | tr -d '\"' | tr -s ' ') ; \
   [ -z \"\$GWS\" ] && GWS=1 ; \
   TYPES=\$(grep -E '^COMPOSE_PROFILES=' .env | cut -d= -f2 | tr -d '\"' | tr ',' ' ' | tr -s ' ') ; \

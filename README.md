@@ -26,7 +26,7 @@ graph TD
         end
 
         subgraph DashboardContainer ["Conteneur : isp-dashboard"]
-            DASH["Superviseur Express.js & SSE (Port :8088)<br>• Docker Engine Socket<br>• Métriques par passerelle (IP, latence, santé)<br>• Éditeur .env en sections par passerelle<br>• Contrôle start/stop/restart des providers"]
+            DASH["Superviseur Express.js & SSE (Port :8088)<br>• Docker Engine Socket<br>• Métriques par passerelle (IP, latence, santé)<br>• Widget métriques VM temps réel (CPU/RAM hôte + par conteneur)<br>• Éditeur .env en sections par passerelle<br>• Contrôle start/stop/restart des providers"]
         end
 
         UPSTREAM1["Proxy Résidentiel 1"] --> INTERNET
@@ -48,6 +48,7 @@ graph TD
 * 🌐 **Multi-pools d'IP** : avec `ENABLED_GATEWAYS="1,2,3,4"`, chaque pool dispose de son propre quota de connexions (ex. 4 × 1000 connexions) et de ses propres devices déclarés sur les plateformes (`Device-ISP-1`, `Device-ISP-2`...).
 * 🔐 **Dashboard Authentifié** : token (`DASHBOARD_TOKEN`), sessions signées HMAC, CSRF, rate limiting, **CSP stricte** — exposition via tunnel SSH uniquement.
 * 📊 **Tableau de Bord & API en Temps Réel** : état individuel de chaque passerelle (IP, géolocalisation, latence, santé), nœuds par passerelle, logs SSE + polling par conteneur, édition `.env` en sections repliables par passerelle.
+* 📈 **Widget Métriques VM en Temps Réel** : CPU/RAM de l'hôte (collecteur `metrics-host` montant `/proc` en read-only) et consommation par conteneur (API Docker `stats`), agrégés par le dashboard via `GET /api/metrics` (cache SWR 5s) et affichés dans la section « Performance de la VM » — suivi du dimensionnement en direct.
 * ⚡ **Optimisé pour accès distant (tunnel SSH)** : API `/api/status` en cache SWR (réponse instantanée, health-checks en arrière-plan), compression **Brotli** (fallback gzip), polling client adaptatif (pause onglet caché, anti-chevauchement), assets hashés immuables (`/static/dist/*`), polices self-hosted — aucune requête externe.
 
 ---
@@ -60,7 +61,7 @@ graph TD
 | **Repocket** | `repocket/repocket:latest` | `GW{n}_REPOCKET_EMAIL`, `GW{n}_REPOCKET_API_KEY` | [repocket.com](https://repocket.com) | 🟢 **100% Actif** (4 pairs connectés, 4 IP distinctes, échange de paquets validé). |
 | **PacketStream** | `packetstream/psclient:latest` | `GW{n}_PACKETSTREAM_CID` | [packetstream.io](https://packetstream.io) | 🟢 **100% Opérationnel** (tunnels actifs sur les 4 passerelles, trafic comptabilisé). |
 | **Honeygain** | `honeygain/honeygain:latest` | `GW{n}_HONEYGAIN_EMAIL`, `GW{n}_HONEYGAIN_PASSWORD`, `GW{n}_HONEYGAIN_DEVICE_NAME` | [dashboard.honeygain.com](https://dashboard.honeygain.com) | 🟢 **Connecté** (4 devices actifs ; conflit de nom temporaire après redémarrage, voir pièges connus). |
-| **Proxyrack** | `./proxyrack/Dockerfile` | `GW{n}_API_KEY`, `GW{n}_DEVICE_NAME`, `GW{n}_UUID` *(laisser vide = auto-généré)* | [peer.proxyrack.com](https://peer.proxyrack.com) | 🟢 **Connecté** (4 devices enregistrés avec UUID distincts par volume). |
+| **Proxyrack** | `./proxyrack/Dockerfile` | `GW{n}_API_KEY`, `GW{n}_DEVICE_NAME`, `GW{n}_UUID` *(laisser vide = auto-généré)* | [peer.proxyrack.com](https://peer.proxyrack.com) | ⚪ **Désactivé par défaut** sur toutes les VM (profil compose `never`, jugé non rentable). Réactivable en retirant le profil `never` ; UUID par volume conservé. |
 
 ---
 
@@ -71,7 +72,7 @@ Le projet est optimisé pour tourner **24h/24 et 7j/7 gratuitement** sur Microso
 ### Spécifications Recommandées :
 * **Instance** : `Standard B2ats_v2` (2 vCPUs AMD EPYC, 1 Go RAM, burstable).
 * **Système d'exploitation** : `Debian 13 "Trixie"` x64 (empreinte minimale : ~65 Mo RAM au repos).
-* **Consommation mesurée de la stack** : **106,7 MiB RAM** et **8,46% CPU** *(très en dessous de la ligne de base de 20% CPU, accumulant continuellement des crédits processeur)*.
+* **Consommation mesurée (2026-08, 22 conteneurs optimisés)** : ~300 MiB RSS cumulé pour les conteneurs, ~700-800 MiB mémoire hôte consommée sur 848 MiB (marge ≈130 MiB) — maintenue sous contrôle par la **convergence hôte** (zRAM, quotas, crun, voir ci-dessous) et le suivi temps réel du dashboard. Charge CPU typique < 1 sur 2 vCPU.
 
 ### 🚀 Déploiement en 1 Commande sur Azure :
 Connectez-vous à votre VM Azure et lancez le script d'initialisation :
@@ -80,10 +81,10 @@ sudo curl -fsSL https://raw.githubusercontent.com/ki2pixel/proxy_docker/main/scr
 ```
 
 Ce script configure automatiquement :
-1. Fichier de Swap SSD de 1 Go.
+1. Swap disque **512 Mo** (filet de secours) puis **convergence hôte** (`./scripts/optimize_vm.sh` : zRAM, crun, daemon.json, earlyoom…) si `OPTIMIZE_VM=1` — **OFF par défaut sur Azure** (VM existante déjà optimisée), ON pour les nouvelles VM (Tierhive).
 2. Module noyau `/dev/net/tun` et `CAP_NET_ADMIN`.
 3. Installation officielle de Docker CE & Docker Compose.
-4. Clonage du projet dans `/opt/proxy_docker` et démarrage automatique.
+4. Clonage du projet dans `/opt/proxy_docker` puis démarrage **avec la même logique de profils que `start.sh`** (`ENABLED_GATEWAYS` + `COMPOSE_PROFILES` via `lib.sh`).
 
 ### 🌐 Accès au Tableau de Bord (sécurisé) :
 Le dashboard n'est **plus exposé publiquement** par défaut (bind `127.0.0.1`, UFW ne ouvre que le port 22). Accédez-y via un tunnel SSH :
@@ -100,6 +101,41 @@ ssh -i docs/Azure/ProxyMonetisation_key.pem -o IdentitiesOnly=yes \
 > 💡 **Options expliquées** : `Compression no` (le serveur HTTP compresse déjà en Brotli — pas de double encodage), `ControlMaster` (réutilise la connexion pour les ssh/scp suivants), `ServerAlive*` (garder le tunnel vivant derrière le NAT Azure), `ExitOnForwardFailure` (échoue si le port 8088 est déjà pris — détecte un tunnel/conteneur local parasite). Le fichier `cmd_ssh_dashboard.txt` à la racine contient la version complète avec l'alternative `~/.ssh/config`.
 
 Connexion avec le `DASHBOARD_TOKEN` défini dans `.env` (généré avec `openssl rand -hex 32`).
+
+### 🖥️ Gestion multi-VM (Azure + Tierhive) :
+
+Chaque VM héberge sa **propre stack** avec son **propre `.env`** (gitignoré). Sur la machine locale, on garde un fichier par VM :
+- `.env` → VM Azure (ex. `68.210.184.174`, user `azureuser`)
+- `.env2` → VM Tierhive (ex. `85.155.184.191`, user `root`, port SSH `2755`)
+
+```bash
+# Synchroniser vers Azure (comportement historique)
+./scripts/sync_env.sh 68.210.184.174 docs/Azure/ProxyMonetisation_key.pem azureuser /opt/proxy_docker
+
+# Synchroniser vers Tierhive (.env2 + port custom + user root)
+SSH_PORT=2755 ./scripts/sync_env.sh 85.155.184.191 docs/Tierhive/ProxyMonetisation1.txt root /opt/proxy_docker .env2
+```
+
+> ⚠️ **Avant de déployer sur une 2e VM** : renommez les devices (`GW{n}_DEVICE_NAME`, `GW{n}_HONEYGAIN_DEVICE_NAME`, `GW{n}_PAWNS_DEVICE_NAME`) pour éviter les conflits de noms côté plateformes, laissez les `GW{n}_UUID` vides (auto-génération) et utilisez des **IP proxy amont différentes** — les monetiseurs rejettent des devices tournant sur les mêmes IP. Le script refuse de synchroniser un fichier contenant des `CHANGEME_` (garde-fou).
+
+### 💾 Override compose pour petites VM (1 vCPU / 1 Go) :
+
+Le fichier [`docker-compose.override.yml`](docker-compose.override.yml) applique les **mêmes quotas que la base** (passerelles 64m/0.40cpu/128 pids, providers 96m/0.25cpu/64 pids) : il garantit qu'une VM Tierhive — ou toute VM dont la copie du dépôt serait antérieure — reçoit les plafonds optimisés. Il est **chargé automatiquement** par `docker compose up` (et par le dashboard via le controller) dès qu'il est présent dans le répertoire.
+
+- **Sûr sur Azure** : valeurs identiques à la base `docker-compose.yml` — aucun effet de bord.
+- Sur Tierhive, le **swap disque 512 Mo + zRAM** sont posés par le cloud-init via `optimize_vm.sh` (pas de swap par défaut sur cette plateforme).
+
+### ⚡ Convergence hôte : optimisations mémoire pour petites VM
+
+Le script [`scripts/optimize_vm.sh`](scripts/optimize_vm.sh) applique (idempotent, `--dry-run` supporté) le socle hôte qui évite le **swap-thrash** observé en production sur Azure :
+
+* **zRAM** : swap compressé en RAM (zstd, taille = RAM, priorité 100) — plus aucun thrash disque sous pression mémoire.
+* **Swap disque 512 Mo** en filet de secours (priorité -2) + sysctl (`vm.swappiness=100`, `page-cluster=0`, `vfs_cache_pressure=50`).
+* **earlyoom** : purge préventive des providers avant OOM global (protège `sshd`/`dockerd`/`containerd`).
+* **`/etc/docker/daemon.json`** : runtime **crun** (OCI C, plus léger au démarrage), log driver `local` (2m×2 compressé), `live-restore`, `userland-proxy:false`, `ip6tables:false`, `no-new-privileges`.
+* **Overrides systemd** pour dockerd/containerd : `GOMEMLIMIT`/`GOGC` + bornes cgroup v2 (`MemoryMin/Low/Max`).
+
+Appelé par les cloud-init via la bascule `OPTIMIZE_VM` (`1` = actif, `0` = ignoré). Voir le [rapport de recherche](docs/Recherches/Optimisation_Docker_VM_1_Go.md) qui en est la source.
 
 ### 🔐 Exposition publique optionnelle (TLS via Caddy) :
 Si vous voulez un accès public chiffré, ajoutez le profil `tls` **en plus** de vos profils actuels :
@@ -121,6 +157,17 @@ Le dashboard permet de **modifier le `.env` directement** (section "Configuratio
 * Seules les clés connues sont éditables (allowlist) — pas de mode fichier brut.
 
 > ⚠️ Le `.env` reste gitignoré : un commit ne l'écrase jamais sur la VM. L'éditeur du dashboard et `sync_env.sh` modifient le même fichier — faites attention à ne pas écraser des changements faits de l'autre côté.
+
+### 📈 Suivi des métriques VM (CPU / RAM) en temps réel
+
+Le dashboard intègre une section **« Performance de la VM »** qui affiche en direct la consommation de la machine :
+
+* **Carte hôte** : CPU et RAM de la VM (`metrics-host`, un sidecar léger qui monte `/proc` de l'hôte en read-only — aucun port exposé sur l'hôte, limité à 64 Mo).
+* **Table par conteneur** : CPU/RAM de chaque passerelle et provider, calculés via l'API Docker `stats` (delta `precpu_stats`).
+* **Agrégation** : route `GET /api/metrics` (sous authentification) avec **cache SWR 5s** — mêmes mécanismes que `/api/status` (réponse instantanée, polling client adaptatif).
+* **Surveillance proactive** : la fenêtre d'observation des métriques Azure Monitor est croisée avec les logs système pour identifier les pics (voir la [post-analyse détaillée](docs/Azure/Post_Analyse_Metriques_VM.md)).
+
+> ⚙️ *Fonctionnement* : le dashboard lit le collecteur interne (`http://metrics-host:9100/metrics`) et les stats Docker à chaque cycle ; si le collecteur n'est pas encore prêt, le widget affiche « En attente du collecteur » sans bloquer le reste du tableau de bord.
 
 ### 🧠 Pièges connus & bonnes pratiques (retour d'expérience production)
 
@@ -158,6 +205,7 @@ ENABLED_GATEWAYS="1"
 
 # Fournisseurs actifs : none | proxyrack | honeygain | packetstream | pawns | repocket | all
 # "none" = aucun provider (seules les passerelles et le dashboard tournent)
+# NB : proxyrack n'est plus activable en pratique (profil compose "never" — désactivé)
 COMPOSE_PROFILES="all"
 
 # --- Passerelle 1 (fallback clés historiques ISP_PROXY_*) ---
@@ -198,8 +246,10 @@ Tableau de bord Web : **[http://localhost:8088](http://localhost:8088)** — con
 
 | Script | Description |
 | :--- | :--- |
-| [`scripts/sync_env.sh`](scripts/sync_env.sh) | **Synchronise le `.env` local vers la VM** : `./scripts/sync_env.sh <IP> <CHEMIN_CLE> [user] [APP_DIR]`. Prérequis : serveur dans `known_hosts` (`ssh-keyscan -H <IP> >> ~/.ssh/known_hosts`), port custom via `SSH_PORT`. ⚠️ Écrase le .env distant (confirmation requise). |
-| [`scripts/azure_cloud_init.sh`](scripts/azure_cloud_init.sh) | Script cloud-init d'installation automatique pour VM Azure Debian 13. |
+| [`scripts/sync_env.sh`](scripts/sync_env.sh) | **Synchronise un `.env` local vers la VM** : `./scripts/sync_env.sh <IP> <CHEMIN_CLE> [user] [APP_DIR] [ENV_SOURCE]`. `ENV_SOURCE` (défaut `.env`) permet de gérer **plusieurs VM** : `.env` pour Azure, `.env2` pour Tierhive. Prérequis : serveur dans `known_hosts` (`ssh-keyscan -H <IP> >> ~/.ssh/known_hosts`), port custom via `SSH_PORT` (ex. `SSH_PORT=2755` pour Tierhive). ⚠️ Écrase le `.env` distant (confirmation requise) ; refuse les fichiers contenant des `CHANGEME_`. |
+| [`scripts/azure_cloud_init.sh`](scripts/azure_cloud_init.sh) | Script cloud-init pour VM Azure Debian 13 : swap 512 Mo, TUN, Docker, clonage du repo puis démarrage **avec la logique de profils de `start.sh`** (`ENABLED_GATEWAYS` + `COMPOSE_PROFILES` via `lib.sh`). Convergence hôte via `optimize_vm.sh` si `OPTIMIZE_VM=1` (OFF par défaut sur Azure — déjà optimisée). |
+| [`scripts/tierhive_cloud_init.sh`](scripts/tierhive_cloud_init.sh) | Script cloud-init pour VM **Tierhive** (KVM, 1 vCPU/1 Go) : swap 512 Mo, TUN, Docker, UFW sur SSH 2755, **convergence hôte activée par défaut** (`OPTIMIZE_VM=1` → zRAM, crun, earlyoom). Ne crée pas de `.env` (synchronisation via `sync_env.sh`). |
+| [`scripts/optimize_vm.sh`](scripts/optimize_vm.sh) | **Convergence hôte pour petites VM** (idempotent, `--dry-run`) : zRAM (swap compressé en RAM, priorité 100), swap disque 512 Mo (filet de secours), sysctl (`swappiness=100`, `page-cluster=0`, `vfs_cache_pressure=50`), earlyoom (anti-OOM), `/etc/docker/daemon.json` (runtime `crun`, log driver `local`, `live-restore`, `userland-proxy:false`, `ip6tables:false`, `no-new-privileges`) et overrides systemd `GOMEMLIMIT`/`GOGC` pour dockerd/containerd. Appelé par les cloud-init via `OPTIMIZE_VM`. |
 | [`scripts/digitalocean_cloud_init.sh`](scripts/digitalocean_cloud_init.sh) | Script cloud-init pour DigitalOcean Droplet. |
 | [`scripts/vultr_cloud_init.sh`](scripts/vultr_cloud_init.sh) | Script cloud-init pour Vultr Cloud Compute. |
 | [`scripts/rotate_env.sh`](scripts/rotate_env.sh) | **Rotation de tous les secrets** du `.env` (génère de nouvelles valeurs + guide). |
@@ -208,7 +258,7 @@ Tableau de bord Web : **[http://localhost:8088](http://localhost:8088)** — con
 | [`scripts/switch_provider.sh`](scripts/switch_provider.sh) | Bascule le fournisseur de monétisation actif (`none` = aucun provider) sur **toutes les passerelles actives**. |
 | [`scripts/test_proxy.sh`](scripts/test_proxy.sh) | Teste la connectivité du proxy amont (via le conteneur gateway-isp-{n} par défaut, `[gateway]` en 3e argument). |
 | [`scripts/benchmark.sh`](scripts/benchmark.sh) | Lance un benchmark en temps réel mesurant la RAM, le CPU et les PIDs de la stack. |
-| [`scripts/build-assets.mjs`](scripts/build-assets.mjs) | **Génère les assets versionnés** (cache-busting) : hache `app.js`/`style.css`/`fonts.css` dans `controller/public/dist/` et réécrit les références dans `index.html`. Lancé par `start.sh` et le CI avant chaque build. |
+| [`scripts/build-assets.mjs`](scripts/build-assets.mjs) | **Génère les assets versionnés** (cache-busting) : hache `app.js`/`style.css`/`fonts.css` dans `controller/public/dist/` et réécrit les références dans `index.html` (idempotent : refs hashées ou non). Lancé par `start.sh` et le CI avant chaque build. |
 
 ---
 
@@ -241,3 +291,5 @@ Dans votre dépôt GitHub (***Settings ➔ Secrets and variables ➔ Actions***)
 * 📄 [Multi-Passerelles : 4 Pools d'IP](docs/Multi_Gateways_4_Proxies.md) : Dimensionnement, déploiement multi-proxys, profils compose et migration.
 * 📄 [Rapport de Recherche sur le Routage Docker](docs/Recherches/Routage_Docker_Monétisation_Bande_Passante.md) : Analyse des solutions Dongle 4G, VPN Dédiés et Proxies ISP.
 * 📄 [Optimisation Performance Web & Tunnel SSH](docs/Recherches/Optimisation_Performance_Web_et_Tunnel.md) : Audit de performance du dashboard derrière un tunnel transatlantique — SWR, compression Brotli, cache-busting, polices self-hosted, polling adaptatif, réglages SSH.
+* 📄 [Post-Analyse des Métriques VM Azure](docs/Azure/Post_Analyse_Metriques_VM.md) : Analyse d'un pic CPU/RAM observé sur Azure Monitor (06:39) — cause racine (conteneur orphelin en crash-loop), pression mémoire chronique (swap) et perspectives d'optimisation de la stack.
+* 📄 [Optimisation Docker sur VM 1 Go](docs/Recherches/Optimisation_Docker_VM_1_Go.md) : Étude deep search (Gemini) sur l'effondrement swap-thrash Azure — zRAM, runtime crun, quotas cgroup v2, earlyoom — dont découle `scripts/optimize_vm.sh` (retour d'expérience applicatif détaillé dans ce dépôt).
