@@ -64,7 +64,8 @@ if [ ! -f "$ENV_SOURCE" ]; then
 fi
 
 # Refuser de synchroniser un fichier contenant encore des placeholders
-if grep -qE "CHANGEME_|votre_" "$ENV_SOURCE"; then
+# (lignes de commentaires ignorées : l'en-tête du .env.example mentionne CHANGEME_)
+if grep -vE '^[[:space:]]*#' "$ENV_SOURCE" | grep -qE "CHANGEME_|votre_"; then
     echo "[-] ERREUR : $ENV_SOURCE contient encore des valeurs placeholder (CHANGEME_/votre_)."
     echo "[-] Renseignez les valeurs avant de synchroniser."
     exit 1

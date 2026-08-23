@@ -18,7 +18,8 @@ fi
 load_env
 
 # Refuser de démarrer avec des credentials placeholder
-if grep -qE "CHANGEME_|votre_" .env; then
+# (lignes de commentaires ignorées : l'en-tête du .env.example mentionne CHANGEME_)
+if grep -vE '^[[:space:]]*#' .env | grep -qE "CHANGEME_|votre_"; then
   echo "[-] ERREUR : le fichier .env contient encore des valeurs placeholder."
   echo "[-] Renseignez DASHBOARD_TOKEN, DASHBOARD_SECRET et les identifiants fournisseurs."
   exit 1
