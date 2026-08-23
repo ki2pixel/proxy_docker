@@ -6,7 +6,8 @@
 # Différences vs azure_cloud_init.sh :
 #   - Utilisateur root (pas azureuser), port SSH 2755 (pas 22)
 #   - Swap disque 512 Mo (filet de secours — zRAM prioritaire, étape 7)
-#   - UFW ouvre le port 2755 (SSH custom) — PAS le 22 (fermé côté Tierhive)
+#   - UFW autorise le port 22 interne (sshd) + 2755 (port public Tierhive)
+#     — Tierhive redirige le 2755 public vers le 22 interne de la VM
 #   - Ne crée PAS de .env (il sera synchronisé via ./scripts/sync_env.sh .env2)
 #   - docker compose up utilise l'override (limites réduites pour 1 Go RAM)
 # ==============================================================================
@@ -110,8 +111,14 @@ else
     echo "[-] OPTIMIZE_VM=0 : convergence hôte ignorée."
 fi
 
-# 7. Pare-feu : SSH custom 2755 uniquement (pas le 22)
-echo "[7/7] Configuration du Pare-feu UFW (SSH 2755 uniquement)..."
+# 7. Pare-feu : autoriser le port 22 interne (sshd) + 2755 (port public)
+# IMPORTANT : Tierhive expose le SSH public sur 2755 via un forward "2755->22 TCP"
+# (voir dashboard) : sshd écoute en INTERNE sur le port 22, pas sur 2755.
+# Autoriser uniquement 2755 puis activer UFW couperait tout accès SSH
+# (default deny incoming). On autorise 22 ET 2755 pour couvrir les deux
+# architectures : forward 2755→22 (Tierhive) ou sshd direct sur 2755.
+echo "[7/7] Configuration du Pare-feu UFW (SSH 22 interne + 2755 public)..."
+ufw allow 22/tcp || true
 ufw allow 2755/tcp || true
 ufw --force enable || true
 
