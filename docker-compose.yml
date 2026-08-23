@@ -126,6 +126,10 @@ services:
   # --- Providers rattachés à la passerelle 1 (profil gw1 + type) ---
   # EarnFM : client officiel (image earnfm/earnfm-client), un token API par
   # passerelle (GW{n}_EARNFM_TOKEN, Settings → API Key sur app.earn.fm).
+  # NB: le client v2.3.3 dérive son deviceId de /etc/machine-id (constant si
+  # absent — tous les conteneurs auraient le même deviceId, seul 1 device
+  # s'enregistrerait). Le wrapper ci-dessous écrit une machine-id UNIQUE et
+  # stable par passerelle (GW{n}_EARNFM_MACHINE_ID) avant de lancer /app/main.
   earnfm-1:
     image: earnfm/earnfm-client:latest
     container_name: earnfm-1
@@ -135,6 +139,9 @@ services:
     depends_on:
       gateway-isp-1:
         condition: service_healthy
+    entrypoint: ["sh", "-c"]
+    command:
+      - 'echo "${GW1_EARNFM_MACHINE_ID:-earnfm-gw1}" > /etc/machine-id; exec /app/main'
     environment:
       - EARNFM_TOKEN=${GW1_EARNFM_TOKEN:-${EARNFM_TOKEN:-}}
     mem_limit: 96m
@@ -246,6 +253,9 @@ services:
     depends_on:
       gateway-isp-2:
         condition: service_healthy
+    entrypoint: ["sh", "-c"]
+    command:
+      - 'echo "${GW2_EARNFM_MACHINE_ID:-earnfm-gw2}" > /etc/machine-id; exec /app/main'
     environment:
       - EARNFM_TOKEN=${GW2_EARNFM_TOKEN:-}
     mem_limit: 96m
@@ -357,6 +367,9 @@ services:
     depends_on:
       gateway-isp-3:
         condition: service_healthy
+    entrypoint: ["sh", "-c"]
+    command:
+      - 'echo "${GW3_EARNFM_MACHINE_ID:-earnfm-gw3}" > /etc/machine-id; exec /app/main'
     environment:
       - EARNFM_TOKEN=${GW3_EARNFM_TOKEN:-}
     mem_limit: 96m
@@ -468,6 +481,9 @@ services:
     depends_on:
       gateway-isp-4:
         condition: service_healthy
+    entrypoint: ["sh", "-c"]
+    command:
+      - 'echo "${GW4_EARNFM_MACHINE_ID:-earnfm-gw4}" > /etc/machine-id; exec /app/main'
     environment:
       - EARNFM_TOKEN=${GW4_EARNFM_TOKEN:-}
     mem_limit: 96m

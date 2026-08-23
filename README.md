@@ -61,7 +61,7 @@ graph TD
 | **Repocket** | `repocket/repocket:latest` | `GW{n}_REPOCKET_EMAIL`, `GW{n}_REPOCKET_API_KEY` | [repocket.com](https://repocket.com) | 🟢 **100% Actif** (4 pairs connectés, 4 IP distinctes, échange de paquets validé). |
 | **PacketStream** | `packetstream/psclient:latest` | `GW{n}_PACKETSTREAM_CID` | [packetstream.io](https://packetstream.io) | 🟢 **100% Opérationnel** (tunnels actifs sur les 4 passerelles, trafic comptabilisé). |
 | **Honeygain** | `honeygain/honeygain:latest` | `GW{n}_HONEYGAIN_EMAIL`, `GW{n}_HONEYGAIN_PASSWORD`, `GW{n}_HONEYGAIN_DEVICE_NAME` | [dashboard.honeygain.com](https://dashboard.honeygain.com) | 🟢 **Connecté** (4 devices actifs ; conflit de nom temporaire après redémarrage, voir pièges connus). |
-| **EarnFM** | `earnfm/earnfm-client:latest` | `GW{n}_EARNFM_TOKEN` *(Settings → API Key sur app.earn.fm)* | [app.earn.fm](https://app.earn.fm) | 🟢 **Actif** (client officiel, un token par passerelle ; remplace Proxyrack, jugé moins rémunérateur). |
+| **EarnFM** | `earnfm/earnfm-client:latest` | `GW{n}_EARNFM_TOKEN`, `GW{n}_EARNFM_MACHINE_ID` *(défaut `earnfm-gw{n}` — deviceId unique par passerelle)* | [app.earn.fm](https://app.earn.fm) | 🟢 **Actif** (client officiel, un device par passerelle ; remplace Proxyrack, jugé moins rémunérateur). |
 
 ---
 
