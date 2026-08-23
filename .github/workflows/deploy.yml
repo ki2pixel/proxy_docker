@@ -81,6 +81,23 @@ jobs:
             # passerelle (DNS mort, devices inactifs côté plateformes).
             docker compose $PROFILE_ARGS up -d --build --force-recreate --remove-orphans
 
+            echo "🔄 [Deploy] Recréation ciblée des providers (network_mode: service:)..."
+            # Constat (2026-08) : compose ne recrée PAS fiablement les
+            # providers rattachés en network_mode: service:gateway-isp-{n}
+            # lors d'un --force-recreate global (seuls les conteneurs réseau
+            # sont recréés). On force leur recréation par NOMS DE SERVICES
+            # pour les ré-attacher aux passerelles fraîches.
+            PROVIDER_NAMES=""
+            for g in $GATEWAYS; do
+              for t in $COMPOSE_PROFILES_VAL; do
+                PROVIDER_NAMES="$PROVIDER_NAMES ${t}-${g}"
+              done
+            done
+            if [ -n "$PROVIDER_NAMES" ]; then
+              # shellcheck disable=SC2086
+              docker compose $PROFILE_ARGS up -d --no-build --force-recreate $PROVIDER_NAMES
+            fi
+
             # La santé du tunnel dépend du proxy amont (credentials/session),
             # pas du code déployé : on attend le dashboard (indicateur de
             # déploiement réussi) et on SIGNALE la santé du gateway sans
