@@ -14,7 +14,6 @@ description: Pièges connus et dépannage — frontend périmé, port 8088 squat
 
 ## Providers
 
-- **Proxyrack** : API `/api/device/add` limitée à 5 requêtes/min — espacer les enregistrements.
 - **Honeygain** : `Device with this name is already active` temporaire après redémarrage — auto-résorbable.
 - **Pawns/Honeygain** : rejet temporaire d'une IP (`tcpip-forward denied` / `Network Unusable`) — délai plateforme.
 

@@ -12,9 +12,8 @@ test('les clés de mot de passe/API sont sensibles', () => {
   assert.ok(isSensitiveKey('ISP_PROXY_PASS'));
   assert.ok(isSensitiveKey('HONEYGAIN_PASSWORD'));
   assert.ok(isSensitiveKey('PAWNS_PASSWORD'));
-  assert.ok(isSensitiveKey('API_KEY'));
   assert.ok(isSensitiveKey('REPOCKET_API_KEY'));
-  assert.ok(isSensitiveKey('UUID'));
+  assert.ok(isSensitiveKey('EARNFM_TOKEN'));
 });
 
 test('les clés préfixées GW{n}_ sont sensibles quand secrètes', () => {
@@ -22,8 +21,8 @@ test('les clés préfixées GW{n}_ sont sensibles quand secrètes', () => {
   assert.ok(isSensitiveKey('GW2_HONEYGAIN_PASSWORD'));
   assert.ok(isSensitiveKey('GW3_PAWNS_PASSWORD'));
   assert.ok(isSensitiveKey('GW4_REPOCKET_API_KEY'));
-  assert.ok(isSensitiveKey('GW1_API_KEY'));
-  assert.ok(isSensitiveKey('GW2_UUID'));
+  assert.ok(isSensitiveKey('GW1_EARNFM_TOKEN'));
+  assert.ok(isSensitiveKey('GW2_EARNFM_TOKEN'));
   assert.ok(!isSensitiveKey('GW1_ISP_PROXY_HOST'));
   assert.ok(!isSensitiveKey('GW2_HONEYGAIN_EMAIL'));
 });
@@ -33,12 +32,14 @@ test('le schéma CONFIG_KEYS couvre les 4 passerelles et le global', () => {
     assert.ok(isKnownConfigKey(`GW${n}_ISP_PROXY_HOST`), `GW${n}_ISP_PROXY_HOST manquante`);
     assert.ok(isKnownConfigKey(`GW${n}_PAWNS_EMAIL`), `GW${n}_PAWNS_EMAIL manquante`);
     assert.ok(isKnownConfigKey(`GW${n}_REPOCKET_API_KEY`), `GW${n}_REPOCKET_API_KEY manquante`);
+    assert.ok(isKnownConfigKey(`GW${n}_EARNFM_TOKEN`), `GW${n}_EARNFM_TOKEN manquante`);
   }
   assert.ok(isKnownConfigKey('ENABLED_GATEWAYS'));
   assert.ok(isKnownConfigKey('GATEWAY_LOGLEVEL'));
   // Légacy conservé pour la migration
   assert.ok(isKnownConfigKey('ISP_PROXY_HOST'));
   assert.ok(isKnownConfigKey('PAWNS_EMAIL'));
+  assert.ok(isKnownConfigKey('EARNFM_TOKEN'));
 });
 
 test('les clés non secrètes ne sont pas sensibles', () => {
@@ -69,12 +70,12 @@ test('configSnapshot masque les valeurs sensibles', () => {
     ISP_PROXY_HOST: 'proxy.example.com',
     ISP_PROXY_PORT: '1080',
     ISP_PROXY_PASS: 'motdepasse-secret',
-    API_KEY: 'cle-secrete',
+    EARNFM_TOKEN: 'jeton-secret',
     HONEYGAIN_EMAIL: 'user@example.com'
   };
   const snap = configSnapshot(env);
   const pass = snap.find(s => s.key === 'ISP_PROXY_PASS');
-  const api = snap.find(s => s.key === 'API_KEY');
+  const api = snap.find(s => s.key === 'EARNFM_TOKEN');
   assert.equal(pass.value, null);
   assert.equal(pass.hasValue, true);
   assert.equal(api.value, null);

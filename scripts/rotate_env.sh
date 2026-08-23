@@ -47,7 +47,7 @@ def gen():
 keys = [
     'DASHBOARD_TOKEN', 'DASHBOARD_SECRET',
     'ISP_PROXY_USER', 'ISP_PROXY_PASS',
-    'API_KEY', 'HONEYGAIN_PASSWORD', 'PAWNS_PASSWORD',
+    'EARNFM_TOKEN', 'HONEYGAIN_PASSWORD', 'PAWNS_PASSWORD',
     'PACKETSTREAM_CID', 'REPOCKET_API_KEY'
 ]
 print(json.dumps({k: gen() for k in keys}))
@@ -83,7 +83,7 @@ echo "✅ Rotation effectuée."
 echo "========================================================"
 echo "⚠️  Actions manuelles REQUISES :"
 echo "  1. Proxy ISP (fournisseur amont) : mettre à jour ISP_PROXY_USER / ISP_PROXY_PASS"
-echo "  2. Proxyrack   : API_KEY → https://peer.proxyrack.com (Settings → API)."
+echo "  2. EarnFM     : EARNFM_TOKEN → https://app.earn.fm (Settings → API Key)."
 echo "  3. Honeygain   : HONEYGAIN_PASSWORD → https://dashboard.honeygain.com (profil)."
 echo "  4. Pawns.app   : PAWNS_PASSWORD → https://pawns.app (profil)."
 echo "  5. Repocket    : REPOCKET_API_KEY → https://app.repocket.com (API keys)."

@@ -4,7 +4,7 @@ Mémoire projet pour les agents de code. Ce fichier décrit les conventions, l'a
 
 ## Vue d'ensemble
 
-Système Docker de monétisation de bande passante : jusqu'à **4 passerelles ISP** (`gateway-isp-1..4`), chacune avec son propre namespace réseau et jusqu'à **5 providers** de monétisation (Proxyrack, Honeygain, PacketStream, Pawns.app, Repocket), pilotées par un **dashboard Express** (`controller/`) qui orchestre via le socket Docker.
+Système Docker de monétisation de bande passante : jusqu'à **4 passerelles ISP** (`gateway-isp-1..4`), chacune avec son propre namespace réseau et jusqu'à **5 providers** de monétisation (EarnFM, Honeygain, PacketStream, Pawns.app, Repocket), pilotées par un **dashboard Express** (`controller/`) qui orchestre via le socket Docker.
 
 Langue du projet : **français** — code, commentaires, messages de log et docs (sauf identifiants/termes techniques anglais).
 
@@ -28,7 +28,7 @@ Langue du projet : **français** — code, commentaires, messages de log et docs
 docker-compose.yml        # 4 passerelles × 5 providers, dashboard, caddy (profil tls)
 gateway-isp/              # entrypoint.sh (TUN + routage + DoH + watchdog), healthcheck.sh, Dockerfile
 controller/               # Dashboard Express.js + orchestration Docker (index.js, lib.js, public/)
-proxyrack/                # Client Proxyrack custom (Dockerfile, run.sh)
+proxyrack/                # (supprimé — remplacé par EarnFM ; historique dans git)
 scripts/                  # start.sh, lib.sh (bibliothèque partagée), outils ops
 docs/                     # Documentation technique approfondie (Azure, multi-passerelles, routage)
 ```
@@ -57,7 +57,7 @@ Express.js (ESM, `"type": "module"`) sans framework frontend : `public/app.js` +
 
 ### Providers (`docker-compose.yml`)
 
-Profils compose **combinés** `gw{n}-{type}` (ex. `gw1-proxyrack`) + profil passerelle `gw{n}`. Types : `proxyrack` (build local `./proxyrack`), `honeygain`, `packetstream`, `pawns`, `repocket` (images officielles), ou `none`. Variable `COMPOSE_PROFILES="all|none|liste"`.
+Profils compose **combinés** `gw{n}-{type}` (ex. `gw1-earnfm`) + profil passerelle `gw{n}`. Types : `earnfm`, `honeygain`, `packetstream`, `pawns`, `repocket` (images officielles), ou `none`. Variable `COMPOSE_PROFILES="all|none|liste"`.
 
 ### .env
 
@@ -82,7 +82,7 @@ Profils compose **combinés** `gw{n}-{type}` (ex. `gw1-proxyrack`) + profil pass
 ## Pièges connus (retour d'expérience)
 
 - **Frontend périmé** : les assets sont hashés (`app.<hash>.js`, `max-age=1y, immutable`) — un redéploiement change le hash. Si un navigateur affiche encore une vieille UI en navigation privée, c'est qu'un **ancien conteneur ou tunnel local** squatte le port 8088 et shadow la VM — vérifier `docker ps` / `ss -tlnp | grep 8088`, arrêter la stack locale, pas blâmer le cache d'abord.
-- **Proxyrack** : UUID par passerelle (volume `proxyrack_data_{n}`) ; laisser `GW{n}_UUID` vide pour l'auto-génération. API `/api/device/add` limitée à 5 requêtes/min — espacer les enregistrements.
+- **EarnFM** : un jeton API par passerelle (`GW{n}_EARNFM_TOKEN`, Settings → API Key sur app.earn.fm) — image officielle `earnfm/earnfm-client:latest`, aucun volume.
 - **Honeygain** : après un redémarrage, `Device with this name is already active` temporaire — auto-résorbable en quelques minutes.
 - **Validation IP plateformes** : Pawns/Honeygain peuvent rejeter une IP temporairement (`tcpip-forward denied` / `Network Unusable`) — délai plateforme, pas un bug de la stack.
 - **`network_mode: service:`** : les providers dépendent de `gateway-isp-{n}` sain (`condition: service_healthy`) — ne jamais activer un provider sans sa passerelle (fail-closed, voir `compose_profiles_args` dans `scripts/lib.sh`).

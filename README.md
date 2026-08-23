@@ -1,6 +1,6 @@
 # Multi-Providers Monetization Hub & Multi-Gateways ISP sur Docker
 
-Système automatisé et sécurisé de monétisation de bande passante couplant **jusqu'à 4 passerelles réseau résidentielles / ISP dédiées** (`gateway-isp-1..4`) et **5 fournisseurs de monétisation par passerelle** (Proxyrack, Honeygain, PacketStream, Pawns.app, Repocket) au sein d'un environnement Docker isolé avec bascule à chaud, watchdog d'auto-guérison et tableau de bord Web.
+Système automatisé et sécurisé de monétisation de bande passante couplant **jusqu'à 4 passerelles réseau résidentielles / ISP dédiées** (`gateway-isp-1..4`) et **5 fournisseurs de monétisation par passerelle** (EarnFM, Honeygain, PacketStream, Pawns.app, Repocket) au sein d'un environnement Docker isolé avec bascule à chaud, watchdog d'auto-guérison et tableau de bord Web.
 
 ---
 
@@ -14,12 +14,12 @@ graph TD
         subgraph GW1 ["Namespace Réseau : gateway-isp-1 (Proxy 1)"]
             TUN1["tun0<br>198.18.0.1/15"] --> T2S1["tun2socks"]
             DOH1["dnsproxy DoH<br>127.0.0.1:53"]
-            P1["pawns-1 · honeygain-1 · repocket-1 · packetstream-1 · proxyrack-1"]
+            P1["pawns-1 · honeygain-1 · repocket-1 · packetstream-1 · earnfm-1"]
         end
         subgraph GW2 ["Namespace Réseau : gateway-isp-2 (Proxy 2)"]
             TUN2["tun0<br>198.18.0.1/15"] --> T2S2["tun2socks"]
             DOH2["dnsproxy DoH<br>127.0.0.1:53"]
-            P2["pawns-2 · honeygain-2 · repocket-2 · packetstream-2 · proxyrack-2"]
+            P2["pawns-2 · honeygain-2 · repocket-2 · packetstream-2 · earnfm-2"]
         end
         subgraph GW4 ["... gateway-isp-3 · gateway-isp-4 (Proxies 3 & 4)"]
             P4["Même topologie, blocs GW3_/GW4_"]
@@ -61,7 +61,7 @@ graph TD
 | **Repocket** | `repocket/repocket:latest` | `GW{n}_REPOCKET_EMAIL`, `GW{n}_REPOCKET_API_KEY` | [repocket.com](https://repocket.com) | 🟢 **100% Actif** (4 pairs connectés, 4 IP distinctes, échange de paquets validé). |
 | **PacketStream** | `packetstream/psclient:latest` | `GW{n}_PACKETSTREAM_CID` | [packetstream.io](https://packetstream.io) | 🟢 **100% Opérationnel** (tunnels actifs sur les 4 passerelles, trafic comptabilisé). |
 | **Honeygain** | `honeygain/honeygain:latest` | `GW{n}_HONEYGAIN_EMAIL`, `GW{n}_HONEYGAIN_PASSWORD`, `GW{n}_HONEYGAIN_DEVICE_NAME` | [dashboard.honeygain.com](https://dashboard.honeygain.com) | 🟢 **Connecté** (4 devices actifs ; conflit de nom temporaire après redémarrage, voir pièges connus). |
-| **Proxyrack** | `./proxyrack/Dockerfile` | `GW{n}_API_KEY`, `GW{n}_DEVICE_NAME`, `GW{n}_UUID` *(laisser vide = auto-généré)* | [peer.proxyrack.com](https://peer.proxyrack.com) | ⚪ **Désactivé par défaut** sur toutes les VM (profil compose `never`, jugé non rentable). Réactivable en retirant le profil `never` ; UUID par volume conservé. |
+| **EarnFM** | `earnfm/earnfm-client:latest` | `GW{n}_EARNFM_TOKEN` *(Settings → API Key sur app.earn.fm)* | [app.earn.fm](https://app.earn.fm) | 🟢 **Actif** (client officiel, un token par passerelle ; remplace Proxyrack, jugé moins rémunérateur). |
 
 ---
 
@@ -174,12 +174,10 @@ Le dashboard intègre une section **« Performance de la VM »** qui affiche en 
 
 ### 🧠 Pièges connus & bonnes pratiques (retour d'expérience production)
 
-* **Proxyrack — UUID par passerelle** : chaque passerelle a son volume (`proxyrack_data_{1..4}`) et son device. Laissez `GW{n}_UUID` **vide** pour que chaque conteneur génère son propre UUID aléatoire persistant (nécessaire pour 4 devices distincts). Un UUID identique sur plusieurs passerelles = un seul device enregistré. Après avoir vidé l'UUID, recréez le conteneur (`docker compose up -d --force-recreate proxyrack-{n}`) et supprimez `uuid.txt`/`api.cfg` du volume si besoin.
 * **Honeygain — conflit de noms après redémarrage** : si un conteneur Honeygain redémarre (CI, restart), Honeygain refuse le device avec `Device with this name is already active` tant que l'ancienne session n'a pas expiré (quelques minutes). C'est temporaire et auto-résorbable — les devices repassent actifs d'eux-mêmes. Les noms `Docker-ISP-{1..4}-Honeygain` sont distincts et corrects.
-* **Validation IP par les plateformes** : Pawns et Honeygain peuvent **rejeter temporairement une nouvelle IP** (`tcpip-forward denied` / `Network Unusable`) alors que la passerelle est saine et que les autres providers (Repocket, PacketStream, Proxyrack) y sont actifs. C'est un délai de validation plateforme (souvent quelques heures), pas un bug de la stack.
+* **Validation IP par les plateformes** : Pawns et Honeygain peuvent **rejeter temporairement une nouvelle IP** (`tcpip-forward denied` / `Network Unusable`) alors que la passerelle est saine et que les autres providers (Repocket, PacketStream, EarnFM) y sont actifs. C'est un délai de validation plateforme (souvent quelques heures), pas un bug de la stack.
 * **Port 8088 local** : si le dashboard affiche une **ancienne version** en navigation privée, c'est qu'un **ancien conteneur Docker local** (ou un ancien tunnel) occupe le port 8088 et sert une vieille image — pas la VM. Vérifiez `docker ps` / `ss -tlnp | grep 8088` et arrêtez la stack locale (`docker compose -p proxy_docker down`) pour libérer le port vers le tunnel SSH.
 * **Frontend périmé après redéploiement** : les assets sont désormais **hashés par contenu** (`app.<hash>.js` servis avec `max-age=1y, immutable`) — un redéploiement change le hash et le navigateur recharge automatiquement la nouvelle version. Si une page semble encore figée après un push, faites un **hard reload** (`Ctrl+Shift+R`) une fois ; l'`index.html` lui reste en revalidation (ETag).
-* **Rate limit API** : l'API Proxyrack (`/api/device/add`) limite à 5 requêtes/min. Avec 3 conteneurs qui s'enregistrent simultanément, les retries se télescopent — les devices finissent par s'enregistrer (ou le faire manuellement, espacé de 20s).
 
 ---
 
@@ -206,9 +204,8 @@ DASHBOARD_SECRET="votre_secret_hmac_session"
 # Passerelles actives : "1" | "1,2" | "1,2,3" | "1,2,3,4"
 ENABLED_GATEWAYS="1"
 
-# Fournisseurs actifs : none | proxyrack | honeygain | packetstream | pawns | repocket | all
+# Fournisseurs actifs : none | earnfm | honeygain | packetstream | pawns | repocket | all
 # "none" = aucun provider (seules les passerelles et le dashboard tournent)
-# NB : proxyrack n'est plus activable en pratique (profil compose "never" — désactivé)
 COMPOSE_PROFILES="all"
 
 # --- Passerelle 1 (fallback clés historiques ISP_PROXY_*) ---
@@ -235,7 +232,7 @@ GATEWAY_LOGLEVEL="warn"
 Ou directement (les profils sont construits d'après `ENABLED_GATEWAYS` et `COMPOSE_PROFILES`) :
 ```bash
 # 1 passerelle + tous les fournisseurs :
-docker compose --profile gw1 --profile gw1-pawns --profile gw1-honeygain --profile gw1-repocket --profile gw1-packetstream --profile gw1-proxyrack up -d --build
+docker compose --profile gw1 --profile gw1-pawns --profile gw1-honeygain --profile gw1-repocket --profile gw1-packetstream --profile gw1-earnfm up -d --build
 # 4 passerelles + tous les fournisseurs :
 docker compose --profile gw1 --profile gw2 --profile gw3 --profile gw4 --profile all up -d --build
 ```

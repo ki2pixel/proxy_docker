@@ -7,7 +7,7 @@ description: Architecture du système proxy_docker — passerelles ISP, namespac
 
 ## Vue d'ensemble
 
-Système Docker de monétisation de bande passante : jusqu'à **4 passerelles ISP** (`gateway-isp-1..4`), chacune avec son propre namespace réseau et jusqu'à **5 providers** de monétisation (Proxyrack, Honeygain, PacketStream, Pawns.app, Repocket), pilotées par un **dashboard Express** (`controller/`) qui orchestre via le socket Docker.
+Système Docker de monétisation de bande passante : jusqu'à **4 passerelles ISP** (`gateway-isp-1..4`), chacune avec son propre namespace réseau et jusqu'à **5 providers** de monétisation (EarnFM, Honeygain, PacketStream, Pawns.app, Repocket), pilotées par un **dashboard Express** (`controller/`) qui orchestre via le socket Docker.
 
 Langue du projet : **français** — code, commentaires, messages de log et docs (sauf identifiants/termes techniques anglais).
 
@@ -21,9 +21,9 @@ Langue du projet : **français** — code, commentaires, messages de log et docs
 docker-compose.yml        # 4 passerelles × 5 providers, dashboard, caddy (profil tls)
 gateway-isp/              # entrypoint.sh (TUN + routage + DoH + watchdog), healthcheck.sh, Dockerfile
 controller/               # Dashboard Express.js + orchestration Docker (index.js, lib.js, public/)
-proxyrack/                # Client Proxyrack custom (Dockerfile, run.sh)
 scripts/                  # start.sh, lib.sh (bibliothèque partagée), outils ops
 docs/                     # Documentation technique approfondie (Azure, multi-passerelles, routage)
+docs/EarnFm/              # Guide du provider EarnFM (image officielle earnfm/earnfm-client)
 ```
 
 ## Passerelles (`gateway-isp/`)

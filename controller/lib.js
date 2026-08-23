@@ -7,8 +7,9 @@ export const GATEWAY_NUMS = [1, 2, 3, 4];
 
 // Clés considérées comme secrètes (redaction dans les logs)
 const BASE_SECRET_KEYS = [
-  'ISP_PROXY_PASS', 'API_KEY', 'UUID', 'HONEYGAIN_PASSWORD', 'PAWNS_PASSWORD',
-  'PACKETSTREAM_CID', 'REPOCKET_API_KEY', 'DASHBOARD_TOKEN', 'DASHBOARD_SECRET'
+  'ISP_PROXY_PASS', 'HONEYGAIN_PASSWORD', 'PAWNS_PASSWORD',
+  'PACKETSTREAM_CID', 'REPOCKET_API_KEY', 'EARNFM_TOKEN',
+  'DASHBOARD_TOKEN', 'DASHBOARD_SECRET'
 ];
 export const SECRET_KEYS = [
   ...BASE_SECRET_KEYS,
@@ -168,12 +169,12 @@ export function parseMemInfo(content) {
 // Configuration du dashboard (.env) : clés connues, sensibilité, catégories
 // -----------------------------------------------------------------------------
 // Une clé est sensible si elle est secrète, éventuellement préfixée par passerelle (GW1_, GW2_...)
-const SENSITIVE_KEY_RE = /^(GW\d+_)?(ISP_PROXY_PASS|API_KEY|UUID|.*_PASSWORD|.*_API_KEY)$/;
+const SENSITIVE_KEY_RE = /^(GW\d+_)?(ISP_PROXY_PASS|.*_PASSWORD|.*_API_KEY|EARNFM_TOKEN)$/;
 
 // Meta des clés globales (dashboard + gateway commun)
 const GLOBAL_KEYS = [
   { key: 'DASHBOARD_PORT', category: 'global', label: 'Port du dashboard' },
-  { key: 'COMPOSE_PROFILES', category: 'global', label: 'Profils actifs', options: ['none', 'repocket', 'honeygain', 'packetstream', 'pawns', 'proxyrack', 'all'] },
+  { key: 'COMPOSE_PROFILES', category: 'global', label: 'Profils actifs', options: ['none', 'repocket', 'honeygain', 'packetstream', 'pawns', 'earnfm', 'all'] },
   { key: 'ENABLED_GATEWAYS', category: 'global', label: 'Passerelles actives (ex. 1,2,3,4)' },
   { key: 'GATEWAY_LOGLEVEL', category: 'global', label: 'Niveau de log gateway', options: ['warning', 'info', 'debug'] }
 ];
@@ -185,9 +186,7 @@ const GATEWAY_KEYS = (n) => [
   { key: `GW${n}_ISP_PROXY_PORT`, category: `gw${n}`, label: 'Port du proxy' },
   { key: `GW${n}_ISP_PROXY_USER`, category: `gw${n}`, label: 'Utilisateur du proxy' },
   { key: `GW${n}_ISP_PROXY_PASS`, category: `gw${n}`, label: 'Mot de passe du proxy' },
-  { key: `GW${n}_API_KEY`, category: `gw${n}`, label: 'Proxyrack — clé API' },
-  { key: `GW${n}_UUID`, category: `gw${n}`, label: 'Proxyrack — UUID' },
-  { key: `GW${n}_DEVICE_NAME`, category: `gw${n}`, label: 'Proxyrack — nom du device' },
+  { key: `GW${n}_EARNFM_TOKEN`, category: `gw${n}`, label: 'EarnFM — jeton API' },
   { key: `GW${n}_HONEYGAIN_EMAIL`, category: `gw${n}`, label: 'Honeygain — email' },
   { key: `GW${n}_HONEYGAIN_PASSWORD`, category: `gw${n}`, label: 'Honeygain — mot de passe' },
   { key: `GW${n}_HONEYGAIN_DEVICE_NAME`, category: `gw${n}`, label: 'Honeygain — device' },
@@ -206,9 +205,7 @@ const LEGACY_KEYS = [
   { key: 'ISP_PROXY_PORT', category: 'legacy', label: 'Port du proxy (legacy)' },
   { key: 'ISP_PROXY_USER', category: 'legacy', label: 'Utilisateur du proxy (legacy)' },
   { key: 'ISP_PROXY_PASS', category: 'legacy', label: 'Mot de passe du proxy (legacy)' },
-  { key: 'API_KEY', category: 'legacy', label: 'Proxyrack — clé API (legacy)' },
-  { key: 'UUID', category: 'legacy', label: 'Proxyrack — UUID (legacy)' },
-  { key: 'DEVICE_NAME', category: 'legacy', label: 'Proxyrack — device (legacy)' },
+  { key: 'EARNFM_TOKEN', category: 'legacy', label: 'EarnFM — jeton API (legacy)' },
   { key: 'HONEYGAIN_EMAIL', category: 'legacy', label: 'Honeygain — email (legacy)' },
   { key: 'HONEYGAIN_PASSWORD', category: 'legacy', label: 'Honeygain — mot de passe (legacy)' },
   { key: 'HONEYGAIN_DEVICE_NAME', category: 'legacy', label: 'Honeygain — device (legacy)' },

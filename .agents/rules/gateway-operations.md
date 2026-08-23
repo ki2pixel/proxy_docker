@@ -16,7 +16,7 @@ description: Opérations sur les passerelles — rotation de session, bascule de
 
 ## Providers (docker-compose.yml)
 
-Profils compose **combinés** `gw{n}-{type}` (ex. `gw1-proxyrack`) + profil passerelle `gw{n}`. Types : `proxyrack` (build local `./proxyrack`), `honeygain`, `packetstream`, `pawns`, `repocket` (images officielles), ou `none`. Variable `COMPOSE_PROFILES="all|none|liste"`.
+Profils compose **combinés** `gw{n}-{type}` (ex. `gw1-earnfm`) + profil passerelle `gw{n}`. Types : `earnfm`, `honeygain`, `packetstream`, `pawns`, `repocket` (images officielles), ou `none`. Variable `COMPOSE_PROFILES="all|none|liste"`.
 
 - **`network_mode: service:`** : les providers dépendent de `gateway-isp-{n}` sain (`condition: service_healthy`).
 - Ne jamais activer un provider sans sa passerelle (fail-closed, voir `compose_profiles_args` dans `scripts/lib.sh`).

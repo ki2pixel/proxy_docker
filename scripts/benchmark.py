@@ -149,7 +149,7 @@ def run_benchmark(duration_sec=45, interval_sec=1.0, render_ram_mb=512.0, render
     known_project_containers = {
         "gateway-isp-1", "gateway-isp-2", "gateway-isp-3", "gateway-isp-4",
         "isp-dashboard",
-        "proxyrack-1", "proxyrack-2", "proxyrack-3", "proxyrack-4",
+        "earnfm-1", "earnfm-2", "earnfm-3", "earnfm-4",
         "honeygain-1", "honeygain-2", "honeygain-3", "honeygain-4",
         "packetstream-1", "packetstream-2", "packetstream-3", "packetstream-4",
         "pawns-1", "pawns-2", "pawns-3", "pawns-4",

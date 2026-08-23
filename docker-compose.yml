@@ -124,36 +124,23 @@ services:
     healthcheck: *gateway-healthcheck
 
   # --- Providers rattachés à la passerelle 1 (profil gw1 + type) ---
-  # Proxyrack : désactivé (profil "never") — pas rentable, désactivé sur toutes
-  # les VM. Reversibilité : supprimer le profil "never" pour le réactiver.
-  proxyrack-1:
-    build:
-      context: ./proxyrack
-      dockerfile: Dockerfile
-    image: proxyrack-pop:latest
-    container_name: proxyrack-1
+  # EarnFM : client officiel (image earnfm/earnfm-client), un token API par
+  # passerelle (GW{n}_EARNFM_TOKEN, Settings → API Key sur app.earn.fm).
+  earnfm-1:
+    image: earnfm/earnfm-client:latest
+    container_name: earnfm-1
     restart: unless-stopped
-    profiles: ["never"]
+    profiles: ["gw1-earnfm"]
     network_mode: "service:gateway-isp-1"
     depends_on:
       gateway-isp-1:
         condition: service_healthy
     environment:
-      - UUID=${GW1_UUID:-${UUID:-}}
-      - API_KEY=${GW1_API_KEY:-${API_KEY:-}}
-      - DEVICE_NAME=${GW1_DEVICE_NAME:-${DEVICE_NAME:-Docker-ISP-1-Proxyrack}}
-    volumes:
-      - proxyrack_data_1:/app/data
+      - EARNFM_TOKEN=${GW1_EARNFM_TOKEN:-${EARNFM_TOKEN:-}}
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64
     logging: *default-logging
-    healthcheck:
-      test: ["CMD", "pgrep", "-f", "script.js"]
-      interval: 60s
-      timeout: 5s
-      retries: 3
-      start_period: 60s
 
   honeygain-1:
     image: honeygain/honeygain:latest
@@ -250,34 +237,21 @@ services:
     logging: *default-logging
     healthcheck: *gateway-healthcheck
 
-  proxyrack-2:
-    build:
-      context: ./proxyrack
-      dockerfile: Dockerfile
-    image: proxyrack-pop:latest
-    container_name: proxyrack-2
+  earnfm-2:
+    image: earnfm/earnfm-client:latest
+    container_name: earnfm-2
     restart: unless-stopped
-    profiles: ["never"]
+    profiles: ["gw2-earnfm"]
     network_mode: "service:gateway-isp-2"
     depends_on:
       gateway-isp-2:
         condition: service_healthy
     environment:
-      - UUID=${GW2_UUID:-}
-      - API_KEY=${GW2_API_KEY:-}
-      - DEVICE_NAME=${GW2_DEVICE_NAME:-Docker-ISP-2-Proxyrack}
-    volumes:
-      - proxyrack_data_2:/app/data
+      - EARNFM_TOKEN=${GW2_EARNFM_TOKEN:-}
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64
     logging: *default-logging
-    healthcheck:
-      test: ["CMD", "pgrep", "-f", "script.js"]
-      interval: 60s
-      timeout: 5s
-      retries: 3
-      start_period: 60s
 
   honeygain-2:
     image: honeygain/honeygain:latest
@@ -374,34 +348,21 @@ services:
     logging: *default-logging
     healthcheck: *gateway-healthcheck
 
-  proxyrack-3:
-    build:
-      context: ./proxyrack
-      dockerfile: Dockerfile
-    image: proxyrack-pop:latest
-    container_name: proxyrack-3
+  earnfm-3:
+    image: earnfm/earnfm-client:latest
+    container_name: earnfm-3
     restart: unless-stopped
-    profiles: ["never"]
+    profiles: ["gw3-earnfm"]
     network_mode: "service:gateway-isp-3"
     depends_on:
       gateway-isp-3:
         condition: service_healthy
     environment:
-      - UUID=${GW3_UUID:-}
-      - API_KEY=${GW3_API_KEY:-}
-      - DEVICE_NAME=${GW3_DEVICE_NAME:-Docker-ISP-3-Proxyrack}
-    volumes:
-      - proxyrack_data_3:/app/data
+      - EARNFM_TOKEN=${GW3_EARNFM_TOKEN:-}
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64
     logging: *default-logging
-    healthcheck:
-      test: ["CMD", "pgrep", "-f", "script.js"]
-      interval: 60s
-      timeout: 5s
-      retries: 3
-      start_period: 60s
 
   honeygain-3:
     image: honeygain/honeygain:latest
@@ -498,34 +459,21 @@ services:
     logging: *default-logging
     healthcheck: *gateway-healthcheck
 
-  proxyrack-4:
-    build:
-      context: ./proxyrack
-      dockerfile: Dockerfile
-    image: proxyrack-pop:latest
-    container_name: proxyrack-4
+  earnfm-4:
+    image: earnfm/earnfm-client:latest
+    container_name: earnfm-4
     restart: unless-stopped
-    profiles: ["never"]
+    profiles: ["gw4-earnfm"]
     network_mode: "service:gateway-isp-4"
     depends_on:
       gateway-isp-4:
         condition: service_healthy
     environment:
-      - UUID=${GW4_UUID:-}
-      - API_KEY=${GW4_API_KEY:-}
-      - DEVICE_NAME=${GW4_DEVICE_NAME:-Docker-ISP-4-Proxyrack}
-    volumes:
-      - proxyrack_data_4:/app/data
+      - EARNFM_TOKEN=${GW4_EARNFM_TOKEN:-}
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64
     logging: *default-logging
-    healthcheck:
-      test: ["CMD", "pgrep", "-f", "script.js"]
-      interval: 60s
-      timeout: 5s
-      retries: 3
-      start_period: 60s
 
   honeygain-4:
     image: honeygain/honeygain:latest
@@ -617,13 +565,5 @@ services:
     logging: *default-logging
 
 volumes:
-  proxyrack_data_1:
-    driver: local
-  proxyrack_data_2:
-    driver: local
-  proxyrack_data_3:
-    driver: local
-  proxyrack_data_4:
-    driver: local
   caddy_data:
   caddy_config:

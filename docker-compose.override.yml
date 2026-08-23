@@ -11,7 +11,6 @@
 # ⚠️ NE PAS relever les limites ici : la base de docker-compose.yml EST le
 #    plafond cible pour 1 Go de RAM. Usage réel mesuré (Azure, 22 containers) :
 #    passerelles 10-12 MiB, providers 3-22 MiB -> marges de 3-8x avec ces quotas.
-#    Les services proxyrack (profil "never") sont volontairement exclus.
 # ==============================================================================
 
 services:
@@ -41,18 +40,22 @@ services:
   packetstream-1: *provider-limits
   pawns-1: *provider-limits
   repocket-1: *provider-limits
+  earnfm-1: *provider-limits
 
   honeygain-2: *provider-limits
   packetstream-2: *provider-limits
   pawns-2: *provider-limits
   repocket-2: *provider-limits
+  earnfm-2: *provider-limits
 
   honeygain-3: *provider-limits
   packetstream-3: *provider-limits
   pawns-3: *provider-limits
   repocket-3: *provider-limits
+  earnfm-3: *provider-limits
 
   honeygain-4: *provider-limits
   packetstream-4: *provider-limits
   pawns-4: *provider-limits
   repocket-4: *provider-limits
+  earnfm-4: *provider-limits
