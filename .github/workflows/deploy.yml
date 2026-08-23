@@ -74,7 +74,12 @@ jobs:
               done
             done
             # shellcheck disable=SC2086
-            docker compose $PROFILE_ARGS up -d --build --remove-orphans
+            # --force-recreate : indispensable pour les providers en
+            # network_mode: service:gateway-isp-{n} — si une passerelle est
+            # recréée (build → nouvelle image), les providers restés inchangés
+            # resteraient dans le namespace réseau orphelin de l'ancienne
+            # passerelle (DNS mort, devices inactifs côté plateformes).
+            docker compose $PROFILE_ARGS up -d --build --force-recreate --remove-orphans
 
             # La santé du tunnel dépend du proxy amont (credentials/session),
             # pas du code déployé : on attend le dashboard (indicateur de
