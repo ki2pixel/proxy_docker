@@ -4,6 +4,9 @@
 # Usage : ./scripts/sync_env.sh <SERVER_IP> <CHEMIN_CLE_SSH> [UTILISATEUR] [APP_DIR_REMOTE] [ENV_SOURCE]
 #   ENV_SOURCE : fichier .env local à synchroniser (défaut : .env)
 #   Exemple multi-VM : .env pour Azure, .env2 pour Tierhive
+#   --push-only : envoie le .env SANS lancer docker compose up (le démarrage
+#                 est alors laissé à ./scripts/start.sh — recommandé pour une
+#                 nouvelle VM où les images locales restent à construire)
 # ==============================================================================
 set -euo pipefail
 
@@ -31,6 +34,24 @@ SSH_USER="${3:-azureuser}"
 REMOTE_DIR="${4:-/opt/proxy_docker}"
 ENV_SOURCE="${5:-.env}"
 KNOWN_HOSTS="${KNOWN_HOSTS:-$HOME/.ssh/known_hosts}"
+
+# --push-only peut être passé en n'importe quelle position : on le retire du
+# jeu d'arguments positionnels avant toute utilisation.
+PUSH_ONLY=0
+POSITIONAL_ARGS=()
+for arg in "$@"; do
+    if [ "$arg" = "--push-only" ]; then
+        PUSH_ONLY=1
+    else
+        POSITIONAL_ARGS+=("$arg")
+    fi
+done
+if [ "$PUSH_ONLY" -eq 1 ]; then
+    set -- "${POSITIONAL_ARGS[@]}"
+    SERVER_IP="$1"; KEY_PATH="$2"
+    SSH_USER="${3:-azureuser}"; REMOTE_DIR="${4:-/opt/proxy_docker}"
+    ENV_SOURCE="${5:-.env}"
+fi
 
 if [ ! -f "$KEY_PATH" ]; then
     echo "[-] Fichier de clé $KEY_PATH introuvable."
@@ -110,7 +131,20 @@ echo "[2/2] Application de la nouvelle configuration et redémarrage..."
 # sudo est requis si l'utilisateur SSH n'est pas root (ex. azureuser)
 SUDO_PREFIX=""
 [ "$SSH_USER" != "root" ] && SUDO_PREFIX="sudo "
-ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SERVER_IP}" "${SUDO_PREFIX}cp /tmp/.env.proxy_docker ${REMOTE_DIR}/.env && ${SUDO_PREFIX}chown -R ${SSH_USER}:${SSH_USER} ${REMOTE_DIR} && rm -f /tmp/.env.proxy_docker && cd ${REMOTE_DIR} && \
+ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SERVER_IP}" "${SUDO_PREFIX}cp /tmp/.env.proxy_docker ${REMOTE_DIR}/.env && ${SUDO_PREFIX}chown -R ${SSH_USER}:${SSH_USER} ${REMOTE_DIR} && rm -f /tmp/.env.proxy_docker"
+
+if [ "$PUSH_ONLY" -eq 1 ]; then
+    echo ""
+    echo "========================================================"
+    echo "✅ .env synchronisé (PUSH_ONLY — sans redémarrage compose)."
+    echo "   Démarrez la stack sur la VM avec :"
+    echo "     cd ${REMOTE_DIR} && ./scripts/start.sh"
+    echo "========================================================"
+    exit 0
+fi
+
+# Lancement des conteneurs (mode historique) — voir --push-only plus haut
+ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SERVER_IP}" "cd ${REMOTE_DIR} && \
   GWS=\$(grep -E '^ENABLED_GATEWAYS=' .env | cut -d= -f2 | tr ',' ' ' | tr -d '\"' | tr -s ' ') ; \
   [ -z \"\$GWS\" ] && GWS=1 ; \
   TYPES=\$(grep -E '^COMPOSE_PROFILES=' .env | cut -d= -f2 | tr -d '\"' | tr ',' ' ' | tr -s ' ') ; \

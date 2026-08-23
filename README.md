@@ -112,9 +112,12 @@ Chaque VM héberge sa **propre stack** avec son **propre `.env`** (gitignoré). 
 # Synchroniser vers Azure (comportement historique)
 ./scripts/sync_env.sh 68.210.184.174 docs/Azure/ProxyMonetisation_key.pem azureuser /opt/proxy_docker
 
-# Synchroniser vers Tierhive (.env2 + port custom + user root)
-SSH_PORT=2755 ./scripts/sync_env.sh 85.155.184.191 docs/Tierhive/ProxyMonetisation1.txt root /opt/proxy_docker .env2
+# Synchroniser vers Tierhive (.env2 + port custom + user root) — push-only :
+#   on ne fait que pousser le .env, le démarrage est laissé à scripts/start.sh
+SSH_PORT=2755 ./scripts/sync_env.sh --push-only 85.155.184.191 docs/Tierhive/ProxyMonetisation1.txt root /opt/proxy_docker .env2
 ```
+
+> **Nouvelle VM (recommandé)** : passez `--push-only` — `sync_env.sh` pousse alors le `.env` **sans** lancer `docker compose up`. Le démarrage complet (construction des images locales + profils + healthchecks) revient à `./scripts/start.sh` : évite un double `up` avec le compte rendu de `sync_env.sh`.
 
 > ⚠️ **Avant de déployer sur une 2e VM** : renommez les devices (`GW{n}_DEVICE_NAME`, `GW{n}_HONEYGAIN_DEVICE_NAME`, `GW{n}_PAWNS_DEVICE_NAME`) pour éviter les conflits de noms côté plateformes, laissez les `GW{n}_UUID` vides (auto-génération) et utilisez des **IP proxy amont différentes** — les monetiseurs rejettent des devices tournant sur les mêmes IP. Le script refuse de synchroniser un fichier contenant des `CHANGEME_` (garde-fou).
 
@@ -246,7 +249,7 @@ Tableau de bord Web : **[http://localhost:8088](http://localhost:8088)** — con
 
 | Script | Description |
 | :--- | :--- |
-| [`scripts/sync_env.sh`](scripts/sync_env.sh) | **Synchronise un `.env` local vers la VM** : `./scripts/sync_env.sh <IP> <CHEMIN_CLE> [user] [APP_DIR] [ENV_SOURCE]`. `ENV_SOURCE` (défaut `.env`) permet de gérer **plusieurs VM** : `.env` pour Azure, `.env2` pour Tierhive. Prérequis : serveur dans `known_hosts` (`ssh-keyscan -H <IP> >> ~/.ssh/known_hosts`), port custom via `SSH_PORT` (ex. `SSH_PORT=2755` pour Tierhive). ⚠️ Écrase le `.env` distant (confirmation requise) ; refuse les fichiers contenant des `CHANGEME_`. |
+| [`scripts/sync_env.sh`](scripts/sync_env.sh) | **Synchronise un `.env` local vers la VM** : `./scripts/sync_env.sh <IP> <CHEMIN_CLE> [user] [APP_DIR] [ENV_SOURCE] [--push-only]`. `ENV_SOURCE` (défaut `.env`) permet de gérer **plusieurs VM** : `.env` pour Azure, `.env2` pour Tierhive. `--push-only` pousse le `.env` sans lancer `docker compose up` (recommandé pour une nouvelle VM — lancez ensuite `start.sh`). Prérequis : serveur dans `known_hosts` (`ssh-keyscan -H <IP> >> ~/.ssh/known_hosts`), port custom via `SSH_PORT` (ex. `SSH_PORT=2755` pour Tierhive). ⚠️ Écrase le `.env` distant (confirmation requise) ; refuse les fichiers contenant des `CHANGEME_`. |
 | [`scripts/azure_cloud_init.sh`](scripts/azure_cloud_init.sh) | Script cloud-init pour VM Azure Debian 13 : swap 512 Mo, TUN, Docker, clonage du repo puis démarrage **avec la logique de profils de `start.sh`** (`ENABLED_GATEWAYS` + `COMPOSE_PROFILES` via `lib.sh`). Convergence hôte via `optimize_vm.sh` si `OPTIMIZE_VM=1` (OFF par défaut sur Azure — déjà optimisée). |
 | [`scripts/tierhive_cloud_init.sh`](scripts/tierhive_cloud_init.sh) | Script cloud-init pour VM **Tierhive** (KVM, 1 vCPU/1 Go) : swap 512 Mo, TUN, Docker, UFW sur SSH 2755, **convergence hôte activée par défaut** (`OPTIMIZE_VM=1` → zRAM, crun, earlyoom). Ne crée pas de `.env` (synchronisation via `sync_env.sh`). |
 | [`scripts/optimize_vm.sh`](scripts/optimize_vm.sh) | **Convergence hôte pour petites VM** (idempotent, `--dry-run`) : zRAM (swap compressé en RAM, priorité 100), swap disque 512 Mo (filet de secours), sysctl (`swappiness=100`, `page-cluster=0`, `vfs_cache_pressure=50`), earlyoom (anti-OOM), `/etc/docker/daemon.json` (runtime `crun`, log driver `local`, `live-restore`, `userland-proxy:false`, `ip6tables:false`, `no-new-privileges`) et overrides systemd `GOMEMLIMIT`/`GOGC` pour dockerd/containerd. Appelé par les cloud-init via `OPTIMIZE_VM`. |
