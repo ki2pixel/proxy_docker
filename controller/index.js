@@ -11,7 +11,8 @@ import {
   redactSecrets, signSession, parseSession,
   escapeEnvValue, parseEnv, applyEnvUpdates,
   clampInt, CONTAINER_NAME_RE, ALLOWED_ACTIONS,
-  configSnapshot, validateConfigUpdates
+  configSnapshot, validateConfigUpdates,
+  HostMetricsCollector
 } from './lib.js';
 
 const execFileAsync = promisify(execFile);
@@ -453,32 +454,18 @@ const docker = new DockerClient();
 // -----------------------------------------------------------------------------
 // Métriques temps réel — snapshot agrégé (host + conteneurs)
 // -----------------------------------------------------------------------------
-// Le snapshot hôte est servi par le sidecar `metrics-host` (monte /proc de
-// l'hôte en read-only) ; les stats par conteneur viennent de l'API Docker.
-// Tous les appels réseau sont protégés par des timeouts (socket 10 s) et le
-// cache SWR ci-dessous ne bloque jamais la réponse HTTP.
-const METRICS_HOST_URL = 'http://metrics-host:9100/metrics';
-// Conteneurs à exclure des stats (dashboard, sidecar, caddy — bruit inutile)
-const METRICS_EXCLUDE = new Set(['isp-dashboard', 'metrics-host', 'isp-caddy']);
-
-async function fetchHostMetrics() {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 3000);
-  try {
-    const res = await fetch(METRICS_HOST_URL, { signal: controller.signal });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
+// Le snapshot hôte est lu directement depuis /proc de l'hôte (monté sur
+// /host/proc:ro ou /proc en dev) avec PSI (/proc/pressure/*) et Swap/zRAM.
+// Les stats par conteneur viennent de l'API Docker.
+// Le cache SWR ci-dessous ne bloque jamais la réponse HTTP.
+const hostMetricsCollector = new HostMetricsCollector();
+// Conteneurs à exclure des stats (dashboard, caddy — bruit inutile)
+const METRICS_EXCLUDE = new Set(['isp-dashboard', 'isp-caddy']);
 
 // Construit le payload de /api/metrics : hôte + stats par conteneur connu
 // (gateway + providers), mappé par nom avec l'état du cache status.
 async function buildMetricsSnapshot() {
-  const host = await fetchHostMetrics();
+  const host = hostMetricsCollector.collect();
   const containers = await docker.listContainers();
   const running = (containers || []).filter(c => c.State === 'running');
 

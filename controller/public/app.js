@@ -473,34 +473,68 @@ function barClass(percent) {
   return '';
 }
 
+function formatUptime(seconds) {
+  if (!seconds || seconds <= 0) return '';
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return `${days}j ${hours}h ${mins}m`;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
+}
+
+function psiValueClass(val, warnThresh = 5, critThresh = 15) {
+  if (typeof val !== 'number') return '';
+  if (val >= critThresh) return 'crit';
+  if (val >= warnThresh) return 'warn';
+  return '';
+}
+
 function renderMetrics(data) {
   if (!metricsGridEl) return;
   const host = data.host;
   const containers = data.containers || {};
 
-  // Badge de statut : vert si l'hôte est collecté, orange sinon
+  // Badge de statut global de collecte
   if (metricsStatusBadgeEl) {
     const active = Boolean(host);
     metricsStatusBadgeEl.innerHTML = active
       ? '<span class="dot-green"></span><span>Collecte active</span>'
-      : '<span class="dot-blue"></span><span>En attente du collecteur</span>';
+      : '<span class="dot-blue"></span><span>En attente de /proc</span>';
   }
 
   metricsGridEl.innerHTML = '';
 
-  // --- Carte Hôte ---
+  // ---------------------------------------------------------------------------
+  // 1. Carte Hôte & Mémoire
+  // ---------------------------------------------------------------------------
   const hostCard = document.createElement('div');
   hostCard.className = 'metrics-card';
+
+  const hostHead = document.createElement('div');
+  hostHead.className = 'metrics-card-header';
   const hostTitle = document.createElement('div');
   hostTitle.className = 'metric-label';
   hostTitle.textContent = host?.hostname ? `VM · ${host.hostname}` : 'VM Hôte';
-  hostCard.appendChild(hostTitle);
+  hostHead.appendChild(hostTitle);
+
+  if (host?.uptimeSec) {
+    const uptime = document.createElement('span');
+    uptime.className = 'metric-detail';
+    uptime.textContent = `up ${formatUptime(host.uptimeSec)}`;
+    hostHead.appendChild(uptime);
+  }
+  hostCard.appendChild(hostHead);
 
   if (host) {
     const cpuPct = host.cpuPercent ?? 0;
     const mem = host.memory || {};
     const memPct = mem.usedPercent ?? 0;
+    const swapTotal = mem.swapTotalBytes ?? 0;
+    const swapUsed = mem.swapUsedBytes ?? 0;
+    const swapPct = mem.swapUsedPercent ?? 0;
 
+    // CPU
     const cpuRow = document.createElement('div');
     cpuRow.className = 'metric-row';
     cpuRow.innerHTML = `<span class="metric-label">CPU</span><span class="metric-value">${cpuPct.toFixed(1)} %</span>`;
@@ -514,6 +548,7 @@ function renderMetrics(data) {
     cpuBar.appendChild(cpuFill);
     hostCard.appendChild(cpuBar);
 
+    // RAM
     const memRow = document.createElement('div');
     memRow.className = 'metric-row';
     memRow.innerHTML = `<span class="metric-label">RAM</span><span class="metric-value">${memPct} %</span>`;
@@ -533,23 +568,127 @@ function renderMetrics(data) {
       detail.textContent = `${formatBytes(mem.usedBytes)} / ${formatBytes(mem.totalBytes)}`;
       hostCard.appendChild(detail);
     }
+
+    // Swap / zRAM
+    if (swapTotal > 0) {
+      const swapRow = document.createElement('div');
+      swapRow.className = 'metric-row';
+      swapRow.innerHTML = `<span class="metric-label">Swap / zRAM</span><span class="metric-value">${swapPct} %</span>`;
+      hostCard.appendChild(swapRow);
+
+      const swapBar = document.createElement('div');
+      swapBar.className = 'metric-bar';
+      const swapFill = document.createElement('div');
+      swapFill.className = `metric-bar-fill ${barClass(swapPct)}`;
+      swapFill.style.width = `${Math.min(swapPct, 100)}%`;
+      swapBar.appendChild(swapFill);
+      hostCard.appendChild(swapBar);
+
+      const swapDetail = document.createElement('div');
+      swapDetail.className = 'metric-detail';
+      swapDetail.textContent = `${formatBytes(swapUsed)} / ${formatBytes(swapTotal)}`;
+      hostCard.appendChild(swapDetail);
+    }
   } else {
     const empty = document.createElement('div');
     empty.className = 'metrics-empty';
-    empty.textContent = 'Collecteur hôte indisponible.';
+    empty.textContent = 'Métriques hôte indisponibles (/proc).';
     hostCard.appendChild(empty);
   }
   metricsGridEl.appendChild(hostCard);
 
-  // --- Carte Conteneurs ---
+  // ---------------------------------------------------------------------------
+  // 2. Carte Pression Noyau (PSI — Pressure Stall Information)
+  // ---------------------------------------------------------------------------
+  const psiCard = document.createElement('div');
+  psiCard.className = 'metrics-card';
+
+  const psiHead = document.createElement('div');
+  psiHead.className = 'metrics-card-header';
+  const psiTitle = document.createElement('div');
+  psiTitle.className = 'metric-label';
+  psiTitle.textContent = 'Pression Noyau (PSI)';
+  psiHead.appendChild(psiTitle);
+
+  const pressure = host?.pressure;
+  const status = pressure?.status || { level: 'unknown', label: 'N/A' };
+  const badgeClass = status.level === 'critical' ? 'crit' : status.level === 'warning' ? 'warn' : status.level === 'nominal' ? 'ok' : 'unknown';
+
+  const psiBadge = document.createElement('span');
+  psiBadge.className = `psi-badge ${badgeClass}`;
+  psiBadge.textContent = status.label;
+  psiBadge.title = status.message || '';
+  psiHead.appendChild(psiBadge);
+  psiCard.appendChild(psiHead);
+
+  if (pressure && (pressure.memory || pressure.cpu || pressure.io)) {
+    const psiList = document.createElement('div');
+    psiList.className = 'psi-metrics-list';
+
+    // Mémoire full & some
+    const memFull = pressure.memory?.full?.avg10;
+    const memSome = pressure.memory?.some?.avg10;
+    const memFullRow = document.createElement('div');
+    memFullRow.className = 'psi-metric-item';
+    memFullRow.innerHTML = `
+      <span class="psi-metric-name">Mémoire (full stall)</span>
+      <span class="psi-metric-val ${psiValueClass(memFull, 5, 15)}">${typeof memFull === 'number' ? memFull.toFixed(2) + ' %' : '--'}</span>
+    `;
+    psiList.appendChild(memFullRow);
+
+    const memSomeRow = document.createElement('div');
+    memSomeRow.className = 'psi-metric-item';
+    memSomeRow.innerHTML = `
+      <span class="psi-metric-name">Mémoire (some stall)</span>
+      <span class="psi-metric-val ${psiValueClass(memSome, 20, 50)}">${typeof memSome === 'number' ? memSome.toFixed(2) + ' %' : '--'}</span>
+    `;
+    psiList.appendChild(memSomeRow);
+
+    // CPU some
+    const cpuSome = pressure.cpu?.some?.avg10;
+    const cpuSomeRow = document.createElement('div');
+    cpuSomeRow.className = 'psi-metric-item';
+    cpuSomeRow.innerHTML = `
+      <span class="psi-metric-name">CPU (some stall)</span>
+      <span class="psi-metric-val ${psiValueClass(cpuSome, 50, 80)}">${typeof cpuSome === 'number' ? cpuSome.toFixed(2) + ' %' : '--'}</span>
+    `;
+    psiList.appendChild(cpuSomeRow);
+
+    // I/O full
+    const ioFull = pressure.io?.full?.avg10;
+    const ioFullRow = document.createElement('div');
+    ioFullRow.className = 'psi-metric-item';
+    ioFullRow.innerHTML = `
+      <span class="psi-metric-name">I/O Disque (full stall)</span>
+      <span class="psi-metric-val ${psiValueClass(ioFull, 15, 40)}">${typeof ioFull === 'number' ? ioFull.toFixed(2) + ' %' : '--'}</span>
+    `;
+    psiList.appendChild(ioFullRow);
+
+    psiCard.appendChild(psiList);
+
+    const note = document.createElement('div');
+    note.className = 'psi-help-note';
+    note.textContent = 'Moyenne 10s (/proc/pressure) · Seuil thrashing critique : mem full ≥ 15%';
+    psiCard.appendChild(note);
+  } else {
+    const empty = document.createElement('div');
+    empty.className = 'metrics-empty';
+    empty.textContent = 'PSI non exposé par le noyau hôte.';
+    psiCard.appendChild(empty);
+  }
+  metricsGridEl.appendChild(psiCard);
+
+  // ---------------------------------------------------------------------------
+  // 3. Carte Conteneurs
+  // ---------------------------------------------------------------------------
   const containerCard = document.createElement('div');
   containerCard.className = 'metrics-card';
   const containerTitle = document.createElement('div');
   containerTitle.className = 'metric-label';
-  containerTitle.textContent = 'Conteneurs (CPU / RAM)';
+  const names = Object.keys(containers);
+  containerTitle.textContent = `Conteneurs actifs (${names.length})`;
   containerCard.appendChild(containerTitle);
 
-  const names = Object.keys(containers);
   if (!names.length) {
     const empty = document.createElement('div');
     empty.className = 'metrics-empty';
@@ -569,7 +708,8 @@ function renderMetrics(data) {
       nameEl.title = name;
       const usage = document.createElement('span');
       usage.className = 'metrics-container-usage';
-      usage.textContent = `${m.cpuPercent?.toFixed(1) ?? '--'}% · ${m.memory?.percent ?? '--'}%`;
+      const memMb = m.memory?.usage ? formatBytes(m.memory.usage) : '--';
+      usage.textContent = `${m.cpuPercent?.toFixed(1) ?? '--'}% · ${memMb} (${m.memory?.percent ?? '--'}%)`;
       row.appendChild(nameEl);
       row.appendChild(usage);
       table.appendChild(row);

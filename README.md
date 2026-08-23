@@ -47,9 +47,7 @@ graph TD
 * ⚡ **DNS-over-HTTPS (DoH)** par passerelle : prévention absolue des fuites DNS (Cloudflare / Google / Quad9).
 * 🌐 **Multi-pools d'IP** : avec `ENABLED_GATEWAYS="1,2,3,4"`, chaque pool dispose de son propre quota de connexions (ex. 4 × 1000 connexions) et de ses propres devices déclarés sur les plateformes (`Device-ISP-1`, `Device-ISP-2`...).
 * 🔐 **Dashboard Authentifié** : token (`DASHBOARD_TOKEN`), sessions signées HMAC, CSRF, rate limiting, **CSP stricte** — exposition via tunnel SSH uniquement.
-* 📊 **Tableau de Bord & API en Temps Réel** : état individuel de chaque passerelle (IP, géolocalisation, latence, santé), nœuds par passerelle, logs SSE + polling par conteneur, édition `.env` en sections repliables par passerelle.
-* 📈 **Widget Métriques VM en Temps Réel** : CPU/RAM de l'hôte (collecteur `metrics-host` montant `/proc` en read-only) et consommation par conteneur (API Docker `stats`), agrégés par le dashboard via `GET /api/metrics` (cache SWR 5s) et affichés dans la section « Performance de la VM » — suivi du dimensionnement en direct.
-* ⚡ **Optimisé pour accès distant (tunnel SSH)** : API `/api/status` en cache SWR (réponse instantanée, health-checks en arrière-plan), compression **Brotli** (fallback gzip), polling client adaptatif (pause onglet caché, anti-chevauchement), assets hashés immuables (`/static/dist/*`), polices self-hosted — aucune requête externe.
+* 📈 **Widget Métriques VM & Pression Noyau (PSI) en Temps Réel** : CPU, RAM, Swap (zRAM) et indicateurs PSI (`/proc/pressure` avec seuils de thrashing) lus directement depuis l'hôte en read-only (sans conteneur sidecar superflu), combinés à la consommation par conteneur (API Docker `stats`) et agrégés via `GET /api/metrics` (cache SWR 5s).
 
 ---
 
@@ -161,16 +159,17 @@ Le dashboard permet de **modifier le `.env` directement** (section "Configuratio
 
 > ⚠️ Le `.env` reste gitignoré : un commit ne l'écrase jamais sur la VM. L'éditeur du dashboard et `sync_env.sh` modifient le même fichier — faites attention à ne pas écraser des changements faits de l'autre côté.
 
-### 📈 Suivi des métriques VM (CPU / RAM) en temps réel
+### 📈 Suivi des métriques VM (CPU / RAM / Swap / PSI) en temps réel
 
-Le dashboard intègre une section **« Performance de la VM »** qui affiche en direct la consommation de la machine :
+Le dashboard intègre une section **« Performance de la VM »** qui affiche en direct la consommation et la contention de la machine :
 
-* **Carte hôte** : CPU et RAM de la VM (`metrics-host`, un sidecar léger qui monte `/proc` de l'hôte en read-only — aucun port exposé sur l'hôte, limité à 64 Mo).
+* **Carte hôte** : CPU, RAM et Swap (zRAM) lus directement depuis `/proc` monté en read-only sur le conteneur du dashboard — sans conteneur sidecar superflu.
+* **Carte Pression Noyau (PSI — Pressure Stall Information)** : métriques de saturation du noyau (`/proc/pressure/memory`, `cpu`, `io`) avec badge de statut d'intégrité et **détection proactive du thrashing** (`full memory avg10 >= 15%`).
 * **Table par conteneur** : CPU/RAM de chaque passerelle et provider, calculés via l'API Docker `stats` (delta `precpu_stats`).
 * **Agrégation** : route `GET /api/metrics` (sous authentification) avec **cache SWR 5s** — mêmes mécanismes que `/api/status` (réponse instantanée, polling client adaptatif).
 * **Surveillance proactive** : la fenêtre d'observation des métriques Azure Monitor est croisée avec les logs système pour identifier les pics (voir la [post-analyse détaillée](docs/Azure/Post_Analyse_Metriques_VM.md)).
 
-> ⚙️ *Fonctionnement* : le dashboard lit le collecteur interne (`http://metrics-host:9100/metrics`) et les stats Docker à chaque cycle ; si le collecteur n'est pas encore prêt, le widget affiche « En attente du collecteur » sans bloquer le reste du tableau de bord.
+> ⚙️ *Fonctionnement* : le dashboard lit `/host/proc` (ou `/proc` en dev) et les stats Docker à chaque cycle ; si une ressource est indisponible, le widget s'adapte sans bloquer le reste du tableau de bord.
 
 ### 🧠 Pièges connus & bonnes pratiques (retour d'expérience production)
 

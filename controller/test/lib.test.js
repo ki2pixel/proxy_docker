@@ -1,10 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   redactSecrets, signSession, buildSessionCookie, parseSession,
   escapeEnvValue, parseEnv, applyEnvUpdates, clampInt,
   CONTAINER_NAME_RE, ALLOWED_ACTIONS,
-  parseStat, cpuPercent, parseMemInfo
+  parseStat, cpuPercent, parseMemInfo,
+  parsePressureLine, parsePressureFile, evaluatePressureStatus,
+  HostMetricsCollector
 } from '../lib.js';
 
 const SECRET = 'a'.repeat(64);
@@ -186,4 +191,125 @@ test('parseMemInfo calcule usedPercent depuis MemTotal/MemAvailable', () => {
 test('parseMemInfo retourne null sans MemAvailable (hôte non-Linux)', () => {
   assert.equal(parseMemInfo('MemTotal:       1000000 kB\n'), null);
   assert.equal(parseMemInfo(''), null);
+});
+
+test('parseMemInfo extrait aussi les métriques de Swap/zRAM', () => {
+  const meminfo = 'MemTotal:       1000000 kB\nMemAvailable:    400000 kB\nSwapTotal:       500000 kB\nSwapFree:        300000 kB\n';
+  const m = parseMemInfo(meminfo);
+  assert.equal(m.totalBytes, 1000000 * 1024);
+  assert.equal(m.availableBytes, 400000 * 1024);
+  assert.equal(m.usedBytes, 600000 * 1024);
+  assert.equal(m.usedPercent, 60);
+  assert.equal(m.swapTotalBytes, 500000 * 1024);
+  assert.equal(m.swapFreeBytes, 300000 * 1024);
+  assert.equal(m.swapUsedBytes, 200000 * 1024);
+  assert.equal(m.swapUsedPercent, 40);
+});
+
+test('parsePressureLine parse les formats some et full', () => {
+  const someLine = 'some avg10=1.23 avg60=4.56 avg300=7.89 total=123456';
+  assert.deepEqual(parsePressureLine(someLine), {
+    type: 'some',
+    avg10: 1.23,
+    avg60: 4.56,
+    avg300: 7.89,
+    total: 123456
+  });
+
+  const fullLine = 'full avg10=15.50 avg60=10.00 avg300=5.00 total=999999';
+  assert.deepEqual(parsePressureLine(fullLine), {
+    type: 'full',
+    avg10: 15.5,
+    avg60: 10.0,
+    avg300: 5.0,
+    total: 999999
+  });
+
+  assert.equal(parsePressureLine(''), null);
+  assert.equal(parsePressureLine('invalid format'), null);
+});
+
+test('parsePressureFile parse les lignes multiples', () => {
+  const content = 'some avg10=0.00 avg60=0.00 avg300=0.00 total=2296\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=2263\n';
+  const parsed = parsePressureFile(content);
+  assert.ok(parsed.some);
+  assert.ok(parsed.full);
+  assert.equal(parsed.some.total, 2296);
+  assert.equal(parsed.full.total, 2263);
+
+  assert.equal(parsePressureFile(''), null);
+  assert.equal(parsePressureFile(null), null);
+});
+
+test('evaluatePressureStatus détecte le thrashing critique, la pression et l\'état nominal', () => {
+  // 1. Thrashing critique (full memory avg10 >= 15%)
+  const critPressure = {
+    memory: {
+      some: { avg10: 25.0, avg60: 10.0, avg300: 5.0, total: 1000 },
+      full: { avg10: 16.2, avg60: 8.0, avg300: 2.0, total: 500 }
+    }
+  };
+  const critStatus = evaluatePressureStatus(critPressure);
+  assert.equal(critStatus.level, 'critical');
+  assert.match(critStatus.label, /Thrashing/);
+
+  // 2. Pression élevée (warning : full memory >= 5% ou some >= 20%)
+  const warnPressure = {
+    memory: {
+      some: { avg10: 22.0, avg60: 5.0, avg300: 1.0, total: 1000 },
+      full: { avg10: 6.0, avg60: 2.0, avg300: 0.0, total: 200 }
+    }
+  };
+  const warnStatus = evaluatePressureStatus(warnPressure);
+  assert.equal(warnStatus.level, 'warning');
+
+  // 3. Nominale
+  const nominalPressure = {
+    memory: {
+      some: { avg10: 0.1, avg60: 0.0, avg300: 0.0, total: 100 },
+      full: { avg10: 0.0, avg60: 0.0, avg300: 0.0, total: 0 }
+    },
+    cpu: {
+      some: { avg10: 2.0, avg60: 1.0, avg300: 0.5, total: 500 }
+    },
+    io: {
+      some: { avg10: 0.0, avg60: 0.0, avg300: 0.0, total: 50 },
+      full: { avg10: 0.0, avg60: 0.0, avg300: 0.0, total: 0 }
+    }
+  };
+  const nominalStatus = evaluatePressureStatus(nominalPressure);
+  assert.equal(nominalStatus.level, 'nominal');
+
+  // 4. Inconnu / non disponible
+  assert.equal(evaluatePressureStatus(null).level, 'unknown');
+  assert.equal(evaluatePressureStatus({}).level, 'unknown');
+});
+
+test('HostMetricsCollector lit un répertoire proc et calcule le delta CPU', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'proc-test-'));
+  try {
+    fs.mkdirSync(path.join(tmpDir, 'pressure'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'stat'), 'cpu  100 20 300 500 30 5 3 0\n');
+    fs.writeFileSync(path.join(tmpDir, 'meminfo'), 'MemTotal: 1000000 kB\nMemAvailable: 400000 kB\nSwapTotal: 500000 kB\nSwapFree: 400000 kB\n');
+    fs.writeFileSync(path.join(tmpDir, 'uptime'), '12345.67 8910.11\n');
+    fs.writeFileSync(path.join(tmpDir, 'pressure', 'memory'), 'some avg10=0.00 avg60=0.00 avg300=0.00 total=100\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n');
+    fs.writeFileSync(path.join(tmpDir, 'pressure', 'cpu'), 'some avg10=0.00 avg60=0.00 avg300=0.00 total=50\n');
+    fs.writeFileSync(path.join(tmpDir, 'pressure', 'io'), 'some avg10=0.00 avg60=0.00 avg300=0.00 total=10\n');
+
+    const collector = new HostMetricsCollector(tmpDir);
+    const snap1 = collector.collect();
+    assert.ok(snap1);
+    assert.equal(snap1.cpuPercent, 0); // 1er échantillon : pas de delta
+    assert.equal(snap1.memory.usedPercent, 60);
+    assert.equal(snap1.memory.swapUsedPercent, 20);
+    assert.equal(snap1.uptimeSec, 12346);
+    assert.equal(snap1.pressure.status.level, 'nominal');
+
+    // 2e échantillon avec progression CPU
+    fs.writeFileSync(path.join(tmpDir, 'stat'), 'cpu  500 100 700 600 40 15 10 5\n');
+    const snap2 = collector.collect();
+    assert.ok(snap2.cpuPercent > 0);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });

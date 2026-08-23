@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import fs from 'fs';
+import os from 'os';
 
 // -----------------------------------------------------------------------------
 // Passerelles supportées (multi-gateway) : GW1_..GW4_
@@ -148,7 +150,7 @@ export function cpuPercent(prev, curr) {
   return Math.min(Math.max(pct, 0), 100);
 }
 
-// parseMemInfo : parse /proc/meminfo -> { totalBytes, availableBytes, usedBytes, usedPercent }
+// parseMemInfo : parse /proc/meminfo -> { totalBytes, availableBytes, usedBytes, usedPercent, swapTotalBytes, swapFreeBytes, swapUsedBytes, swapUsedPercent }
 // Retourne null si meminfo est absent (hôte non-Linux, fallback).
 export function parseMemInfo(content) {
   const totalMatch = /^MemTotal:\s+(\d+) kB/m.exec(String(content || ''));
@@ -157,12 +159,174 @@ export function parseMemInfo(content) {
   const totalBytes = Number(totalMatch[1]) * 1024;
   const availableBytes = Number(availMatch[1]) * 1024;
   const usedBytes = Math.max(totalBytes - availableBytes, 0);
+  const usedPercent = totalBytes > 0 ? Math.round((usedBytes / totalBytes) * 100) : 0;
+
+  const swapTotalMatch = /^SwapTotal:\s+(\d+) kB/m.exec(String(content || ''));
+  const swapFreeMatch = /^SwapFree:\s+(\d+) kB/m.exec(String(content || ''));
+  const swapTotalBytes = swapTotalMatch ? Number(swapTotalMatch[1]) * 1024 : 0;
+  const swapFreeBytes = swapFreeMatch ? Number(swapFreeMatch[1]) * 1024 : 0;
+  const swapUsedBytes = Math.max(swapTotalBytes - swapFreeBytes, 0);
+  const swapUsedPercent = swapTotalBytes > 0 ? Math.round((swapUsedBytes / swapTotalBytes) * 100) : 0;
+
   return {
     totalBytes,
     availableBytes,
     usedBytes,
-    usedPercent: totalBytes > 0 ? Math.round((usedBytes / totalBytes) * 100) : 0
+    usedPercent,
+    swapTotalBytes,
+    swapFreeBytes,
+    swapUsedBytes,
+    swapUsedPercent
   };
+}
+
+// -----------------------------------------------------------------------------
+// Pression Système (PSI — Pressure Stall Information : /proc/pressure/*)
+// -----------------------------------------------------------------------------
+// parsePressureLine : parse une ligne PSI (ex: "some avg10=0.00 avg60=0.00 avg300=0.00 total=12345")
+export function parsePressureLine(line) {
+  if (!line) return null;
+  const match = /^(some|full)\s+avg10=([\d.]+)\s+avg60=([\d.]+)\s+avg300=([\d.]+)\s+total=(\d+)/.exec(String(line).trim());
+  if (!match) return null;
+  const [, type, avg10, avg60, avg300, total] = match;
+  return {
+    type,
+    avg10: parseFloat(avg10),
+    avg60: parseFloat(avg60),
+    avg300: parseFloat(avg300),
+    total: parseInt(total, 10)
+  };
+}
+
+// parsePressureFile : parse l'intégralité d'un fichier PSI (/proc/pressure/{memory,cpu,io})
+export function parsePressureFile(content) {
+  if (!content) return null;
+  const lines = String(content).trim().split('\n');
+  const res = {};
+  for (const line of lines) {
+    const parsed = parsePressureLine(line);
+    if (parsed) {
+      res[parsed.type] = {
+        avg10: parsed.avg10,
+        avg60: parsed.avg60,
+        avg300: parsed.avg300,
+        total: parsed.total
+      };
+    }
+  }
+  return Object.keys(res).length > 0 ? res : null;
+}
+
+// evaluatePressureStatus : évalue l'état de pression global et la détection du thrashing
+export function evaluatePressureStatus(pressure) {
+  if (!pressure || (!pressure.memory && !pressure.cpu && !pressure.io)) {
+    return {
+      level: 'unknown',
+      label: 'Indisponible',
+      message: 'PSI non disponible sur cet hôte'
+    };
+  }
+  const memFull = pressure.memory?.full?.avg10 ?? 0;
+  const memSome = pressure.memory?.some?.avg10 ?? 0;
+  const ioFull = pressure.io?.full?.avg10 ?? 0;
+  const cpuSome = pressure.cpu?.some?.avg10 ?? 0;
+
+  // Thrashing critique si full avg10 mémoire >= 15% (selon rapport d'optimisation VM 1 Go)
+  if (memFull >= 15) {
+    return {
+      level: 'critical',
+      label: 'Thrashing Critique',
+      message: `Saturation mémoire sévère (full memory avg10: ${memFull.toFixed(1)}%)`
+    };
+  }
+  // Pression élevée (warning)
+  if (memFull >= 5 || memSome >= 20 || ioFull >= 15 || cpuSome >= 50) {
+    return {
+      level: 'warning',
+      label: 'Pression Élevée',
+      message: `Contention détectée (mem full: ${memFull.toFixed(1)}%, mem some: ${memSome.toFixed(1)}%, io: ${ioFull.toFixed(1)}%)`
+    };
+  }
+  return {
+    level: 'nominal',
+    label: 'Nominale',
+    message: 'Aucune contention critique détectée'
+  };
+}
+
+// HostMetricsCollector : collecte in-process des métriques de l'hôte sans sidecar
+export class HostMetricsCollector {
+  constructor(hostProcPath = null) {
+    this.hostProc = hostProcPath || process.env.HOST_PROC || (fs.existsSync('/host/proc') ? '/host/proc' : '/proc');
+    this.prevStat = null;
+  }
+
+  readFile(relPath) {
+    try {
+      return fs.readFileSync(`${this.hostProc}/${relPath}`, 'utf-8');
+    } catch {
+      return '';
+    }
+  }
+
+  collect() {
+    const statContent = this.readFile('stat');
+    const currStat = parseStat(statContent);
+    let cpuPct = 0;
+    if (currStat && this.prevStat) {
+      cpuPct = cpuPercent(this.prevStat, currStat);
+    }
+    this.prevStat = currStat;
+
+    const meminfoContent = this.readFile('meminfo');
+    const memory = parseMemInfo(meminfoContent);
+
+    // Si ni stat ni meminfo n'ont pu être lus, l'hôte est considéré indisponible
+    if (!currStat && !memory) {
+      return null;
+    }
+
+    const uptimeRaw = this.readFile('uptime').trim().split(/\s+/)[0];
+    const uptimeNum = Number(uptimeRaw);
+    const uptimeSec = Number.isFinite(uptimeNum) ? Math.round(uptimeNum) : null;
+
+    // PSI (/proc/pressure/*)
+    const memPressure = parsePressureFile(this.readFile('pressure/memory'));
+    const cpuPressure = parsePressureFile(this.readFile('pressure/cpu'));
+    const ioPressure = parsePressureFile(this.readFile('pressure/io'));
+
+    let pressure = null;
+    if (memPressure || cpuPressure || ioPressure) {
+      pressure = {
+        memory: memPressure,
+        cpu: cpuPressure,
+        io: ioPressure
+      };
+      pressure.status = evaluatePressureStatus(pressure);
+    } else {
+      pressure = {
+        memory: null,
+        cpu: null,
+        io: null,
+        status: evaluatePressureStatus(null)
+      };
+    }
+
+    let hostname = 'hôte';
+    try {
+      hostname = os.hostname();
+    } catch {
+      // fallback
+    }
+
+    return {
+      hostname,
+      cpuPercent: Math.round(cpuPct * 10) / 10,
+      memory,
+      pressure,
+      uptimeSec
+    };
+  }
 }
 
 // -----------------------------------------------------------------------------
