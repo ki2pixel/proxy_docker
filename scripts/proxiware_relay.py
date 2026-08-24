@@ -66,7 +66,6 @@ def handle_udp_associate(client_sock, parent_host, parent_port, parent_user, par
     try:
         parent_tcp = socket.create_connection((parent_host, int(parent_port)), timeout=20)
         parent_udp_ip, parent_udp_port = socks5_udp_associate_parent(parent_tcp, parent_user, parent_pass)
-        print("  [UDP] Parent bound sur %s:%d" % (parent_udp_ip, parent_udp_port), flush=True)
 
         udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         udp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -86,15 +85,15 @@ def handle_udp_associate(client_sock, parent_host, parent_port, parent_user, par
         # Répondre succès au client avec l'IP 0.0.0.0 et le port UDP assigné
         client_sock.sendall(b"\x05\x00\x00\x01\x00\x00\x00\x00" + bound_port.to_bytes(2, "big"))
 
+        client_sock.settimeout(None)
+        parent_tcp.settimeout(None)
+
         client_udp_addr = None
         parent_target = (parent_udp_ip, parent_udp_port)
 
         while True:
             # On surveille la déconnexion TCP du client et les paquets UDP
-            r, _, _ = select.select([client_sock, udp_sock], [], [], 300)
-            if not r:
-                # Timeout d'inactivité
-                break
+            r, _, _ = select.select([client_sock, udp_sock], [], [], None)
             if client_sock in r:
                 data = client_sock.recv(1024)
                 if not data:
@@ -112,8 +111,8 @@ def handle_udp_associate(client_sock, parent_host, parent_port, parent_user, par
                     # Paquet venant du client -> envoyer au proxy parent
                     client_udp_addr = src_addr
                     udp_sock.sendto(pkt, parent_target)
-    except Exception as e:
-        print("  [UDP] Erreur association: %s" % e, flush=True)
+    except Exception:
+        pass
     finally:
         if udp_sock:
             try:
@@ -128,6 +127,7 @@ def handle_udp_associate(client_sock, parent_host, parent_port, parent_user, par
 
 
 def handle_client(client_sock, parent_host, parent_port, parent_user, parent_pass, listen_port):
+    parent = None
     try:
         # Handshake SOCKS5 client (méthodes proposées : none ou user/pass)
         client_sock.settimeout(10)
@@ -189,17 +189,23 @@ def handle_client(client_sock, parent_host, parent_port, parent_user, parent_pas
 
         # Ouvrir vers le proxy parent (qui fera le CONNECT vers la destination réelle)
         parent = socket.create_connection((parent_host, int(parent_port)), timeout=20)
-        parent.settimeout(20)
         socks5_connect_parent(parent, parent_user, parent_pass, dest, dest_port)
         # Répondre succès au client
         client_sock.sendall(b"\x05\x00\x00\x01\x00\x00\x00\x00\x00\x00")
 
-        # Bridge bidirectionnel TCP
+        # Activer TCP Keepalive et désactiver les timeouts pour les flux persistants
+        client_sock.settimeout(None)
+        parent.settimeout(None)
+        try:
+            client_sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            parent.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        except OSError:
+            pass
+
+        # Bridge bidirectionnel TCP persistant
         sockets = [client_sock, parent]
         while True:
-            r, _, _ = select.select(sockets, [], [], 60)
-            if not r:
-                break
+            r, _, _ = select.select(sockets, [], [], None)
             for s in r:
                 bdata = s.recv(8192)
                 if not bdata:
@@ -213,6 +219,11 @@ def handle_client(client_sock, parent_host, parent_port, parent_user, parent_pas
             client_sock.close()
         except OSError:
             pass
+        if parent:
+            try:
+                parent.close()
+            except OSError:
+                pass
 
 
 def main():
@@ -229,7 +240,7 @@ def main():
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind(("0.0.0.0", listen_port))
     server.listen(128)
-    print("Relais SOCKS5 (TCP+UDP) %s:%s -> %s:%s (%s@%s)" % (parent_host, parent_port, listen_port, parent_port, parent_user, parent_host), flush=True)
+    print("Relais SOCKS5 (TCP+UDP persistant) %s:%s -> %s:%s (%s@%s)" % (parent_host, parent_port, listen_port, parent_port, parent_user, parent_host), flush=True)
     print("En écoute sur %d" % listen_port, flush=True)
     while True:
         client, addr = server.accept()
