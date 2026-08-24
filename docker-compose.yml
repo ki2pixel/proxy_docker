@@ -101,27 +101,22 @@ services:
     healthcheck: *gateway-healthcheck
 
   # --- Providers rattachés à la passerelle 1 (profil gw1 + type) ---
-  # TraffMonetizer : client officiel (image traffmonetizer/cli_v2, binaire
-  # statique sans shell) emballé dans un wrapper Alpine (traffmonetizer/).
-  # Un token global partagé (TRAFFMONETIZER_TOKEN, Dashboard → Token sur
-  # app.traffmonetizer.com) pour toutes les passerelles + un nom de device
-  # par passerelle (GW{n}_TRAFFMONETIZER_DEVICE_NAME) pour les identifier
-  # dans le panel. Le token reste en variable d'env (jamais dans la commande).
-  traffmonetizer-1:
-    build:
-      context: ./traffmonetizer
-      dockerfile: Dockerfile
-    image: isp-traffmonetizer:latest
-    container_name: traffmonetizer-1
+  # Antgain : client officiel (image pinors/antgain-cli:latest).
+  # Une clé API globale partagée (ANTGAIN_API_KEY, dashboard https://antgain.app)
+  # + un UUID de device stable et unique par passerelle (GW{n}_ANTGAIN_DEVICE_ID)
+  # pour conserver l'identité du nœud lors des redémarrages.
+  antgain-1:
+    image: pinors/antgain-cli:latest
+    container_name: antgain-1
     restart: unless-stopped
-    profiles: ["gw1-traffmonetizer"]
+    profiles: ["gw1-antgain"]
     network_mode: "service:gateway-isp-1"
     depends_on:
       gateway-isp-1:
         condition: service_healthy
     environment:
-      - TRAFFMONETIZER_TOKEN=${TRAFFMONETIZER_TOKEN:-}
-      - TRAFFMONETIZER_DEVICE_NAME=${GW1_TRAFFMONETIZER_DEVICE_NAME:-Docker-ISP-1-TraffMonetizer}
+      - ANTGAIN_API_KEY=${ANTGAIN_API_KEY:-}
+      - ANTGAIN_DEVICE_ID=${GW1_ANTGAIN_DEVICE_ID:-${ANTGAIN_DEVICE_ID:-}}
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64
@@ -222,21 +217,18 @@ services:
     logging: *default-logging
     healthcheck: *gateway-healthcheck
 
-  traffmonetizer-2:
-    build:
-      context: ./traffmonetizer
-      dockerfile: Dockerfile
-    image: isp-traffmonetizer:latest
-    container_name: traffmonetizer-2
+  antgain-2:
+    image: pinors/antgain-cli:latest
+    container_name: antgain-2
     restart: unless-stopped
-    profiles: ["gw2-traffmonetizer"]
+    profiles: ["gw2-antgain"]
     network_mode: "service:gateway-isp-2"
     depends_on:
       gateway-isp-2:
         condition: service_healthy
     environment:
-      - TRAFFMONETIZER_TOKEN=${TRAFFMONETIZER_TOKEN:-}
-      - TRAFFMONETIZER_DEVICE_NAME=${GW2_TRAFFMONETIZER_DEVICE_NAME:-Docker-ISP-2-TraffMonetizer}
+      - ANTGAIN_API_KEY=${ANTGAIN_API_KEY:-}
+      - ANTGAIN_DEVICE_ID=${GW2_ANTGAIN_DEVICE_ID:-}
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64
@@ -337,21 +329,18 @@ services:
     logging: *default-logging
     healthcheck: *gateway-healthcheck
 
-  traffmonetizer-3:
-    build:
-      context: ./traffmonetizer
-      dockerfile: Dockerfile
-    image: isp-traffmonetizer:latest
-    container_name: traffmonetizer-3
+  antgain-3:
+    image: pinors/antgain-cli:latest
+    container_name: antgain-3
     restart: unless-stopped
-    profiles: ["gw3-traffmonetizer"]
+    profiles: ["gw3-antgain"]
     network_mode: "service:gateway-isp-3"
     depends_on:
       gateway-isp-3:
         condition: service_healthy
     environment:
-      - TRAFFMONETIZER_TOKEN=${TRAFFMONETIZER_TOKEN:-}
-      - TRAFFMONETIZER_DEVICE_NAME=${GW3_TRAFFMONETIZER_DEVICE_NAME:-Docker-ISP-3-TraffMonetizer}
+      - ANTGAIN_API_KEY=${ANTGAIN_API_KEY:-}
+      - ANTGAIN_DEVICE_ID=${GW3_ANTGAIN_DEVICE_ID:-}
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64
@@ -452,21 +441,18 @@ services:
     logging: *default-logging
     healthcheck: *gateway-healthcheck
 
-  traffmonetizer-4:
-    build:
-      context: ./traffmonetizer
-      dockerfile: Dockerfile
-    image: isp-traffmonetizer:latest
-    container_name: traffmonetizer-4
+  antgain-4:
+    image: pinors/antgain-cli:latest
+    container_name: antgain-4
     restart: unless-stopped
-    profiles: ["gw4-traffmonetizer"]
+    profiles: ["gw4-antgain"]
     network_mode: "service:gateway-isp-4"
     depends_on:
       gateway-isp-4:
         condition: service_healthy
     environment:
-      - TRAFFMONETIZER_TOKEN=${TRAFFMONETIZER_TOKEN:-}
-      - TRAFFMONETIZER_DEVICE_NAME=${GW4_TRAFFMONETIZER_DEVICE_NAME:-Docker-ISP-4-TraffMonetizer}
+      - ANTGAIN_API_KEY=${ANTGAIN_API_KEY:-}
+      - ANTGAIN_DEVICE_ID=${GW4_ANTGAIN_DEVICE_ID:-}
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64

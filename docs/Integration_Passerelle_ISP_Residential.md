@@ -6,7 +6,7 @@ Ce document décrit l'architecture déployée et la procédure d'exploitation po
 
 ## 1. Architecture Technique Réalisée
 
-Le conteneur passerelle **`gateway-isp`** assure l'interception transparente du trafic réseau L3/L4 pour tous les conteneurs de monétisation (*Repocket, Honeygain, Pawns.app, PacketStream, TraffMonetizer*).
+Le conteneur passerelle **`gateway-isp`** assure l'interception transparente du trafic réseau L3/L4 pour tous les conteneurs de monétisation (*Repocket, Honeygain, Pawns.app, PacketStream, Antgain*).
 
 ```mermaid
 graph LR
@@ -22,7 +22,7 @@ graph LR
             HG["Honeygain"]
             PA["Pawns.app"]
             PS["PacketStream"]
-            PR["TraffMonetizer"]
+            PR["Antgain"]
         end
     end
 

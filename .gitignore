@@ -12,3 +12,4 @@ cmd_ssh_dashboard*.txt
 /docs/Tierhive/*.txt
 __pycache__/
 *.pyc
+/ressources/

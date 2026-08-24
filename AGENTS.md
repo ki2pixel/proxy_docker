@@ -4,7 +4,7 @@ Mémoire projet pour les agents de code. Ce fichier décrit les conventions, l'a
 
 ## Vue d'ensemble
 
-Système Docker de monétisation de bande passante : jusqu'à **4 passerelles ISP** (`gateway-isp-1..4`), chacune avec son propre namespace réseau et jusqu'à **5 providers** de monétisation (TraffMonetizer, Honeygain, PacketStream, Pawns.app, Repocket), pilotées par un **dashboard Express** (`controller/`) qui orchestre via le socket Docker.
+Système Docker de monétisation de bande passante : jusqu'à **4 passerelles ISP** (`gateway-isp-1..4`), chacune avec son propre namespace réseau et jusqu'à **5 providers** de monétisation (Antgain, Honeygain, PacketStream, Pawns.app, Repocket), pilotées par un **dashboard Express** (`controller/`) qui orchestre via le socket Docker.
 
 Langue du projet : **français** — code, commentaires, messages de log et docs (sauf identifiants/termes techniques anglais).
 
@@ -28,10 +28,10 @@ Langue du projet : **français** — code, commentaires, messages de log et docs
 docker-compose.yml        # 4 passerelles × 5 providers, dashboard, caddy (profil tls)
 gateway-isp/              # entrypoint.sh (TUN + routage + DoH + watchdog), healthcheck.sh, Dockerfile
 controller/               # Dashboard Express.js + orchestration Docker (index.js, lib.js, public/)
-traffmonetizer/            # wrapper Alpine du client officiel (binaire statique sans shell)
 scripts/                  # start.sh, lib.sh (bibliothèque partagée), outils ops
 scripts/proxiware_relay.py # Relais SOCKS5 (déployé sur Azure) : chaînage vers les proxys Proxiware — contourne le blocage port 1337 de Tierhive
 docs/                     # Documentation technique approfondie (Azure, multi-passerelles, routage)
+docs/Antgain/             # Guide du provider Antgain (image officielle pinors/antgain-cli)
 ```
 
 ### Principe central
@@ -58,7 +58,7 @@ Express.js (ESM, `"type": "module"`) sans framework frontend : `public/app.js` +
 
 ### Providers (`docker-compose.yml`)
 
-Profils compose **combinés** `gw{n}-{type}` (ex. `gw1-traffmonetizer`) + profil passerelle `gw{n}`. Types : `traffmonetizer`, `honeygain`, `packetstream`, `pawns`, `repocket` (images officielles, sauf TraffMonetizer qui passe par un wrapper), ou `none`. Variable `COMPOSE_PROFILES="all|none|liste"`.
+Profils compose **combinés** `gw{n}-{type}` (ex. `gw1-antgain`) + profil passerelle `gw{n}`. Types : `antgain`, `honeygain`, `packetstream`, `pawns`, `repocket` (images officielles), ou `none`. Variable `COMPOSE_PROFILES="all|none|liste"`.
 
 ### .env
 
@@ -84,7 +84,7 @@ Profils compose **combinés** `gw{n}-{type}` (ex. `gw1-traffmonetizer`) + profil
 
 - **Tierhive bloque le port 1337 sortant** : les proxys statiques Proxiware écoutent tous sur 1337 (port fixe), donc une VM Tierhive ne peut jamais les joindre directement — timeout TCP tous ports vers les IPs Proxiware, ICMP OK, reste d'Internet OK. Symptôme identique sur plusieurs IPs sources/localisations → ce n'est PAS un problème d'IP source, de swap ou de config. **Solution** : relais SOCKS5 sur la VM Azure (`scripts/proxiware_relay.py`, services `proxiware-relay-{1..4}`, ports 10801–10804) ; les gateways Tierhive pointent vers `68.210.184.174:1080{n}` via `.env2` (USER/PASS vides). Voir README « Relais SOCKS5 Azure → Proxiware ».
 - **Frontend périmé** : les assets sont hashés (`app.<hash>.js`, `max-age=1y, immutable`) — un redéploiement change le hash. Si un navigateur affiche encore une vieille UI en navigation privée, c'est qu'un **ancien conteneur ou tunnel local** squatte le port 8088 et shadow la VM — vérifier `docker ps` / `ss -tlnp | grep 8088`, arrêter la stack locale, pas blâmer le cache d'abord.
-- **TraffMonetizer** : un token global partagé (`TRAFFMONETIZER_TOKEN`, Dashboard → Token sur app.traffmonetizer.com — un seul token pour les 4 devices) + un nom de device par passerelle (`GW{n}_TRAFFMONETIZER_DEVICE_NAME`). L'image officielle `traffmonetizer/cli_v2` est un binaire statique **sans shell** : on passe par le wrapper `traffmonetizer/` (Alpine + `entrypoint.sh` qui exécute `cli start accept --token "$TRAFFMONETIZER_TOKEN"`). Le token reste en variable d'env (jamais dans `Config.Cmd` ni les logs). Aucun volume.
+- **Antgain** : une clé API globale partagée (`ANTGAIN_API_KEY`, Settings sur https://antgain.app/dashboard/settings) + un UUID de device unique et stable par passerelle (`GW{n}_ANTGAIN_DEVICE_ID`). L'image officielle `pinors/antgain-cli:latest` est utilisée directement sans wrapper. L'UUID doit rester fixe lors des recréations de conteneurs.
 - **Honeygain** : après un redémarrage, `Device with this name is already active` temporaire — auto-résorbable en quelques minutes.
 - **Validation IP plateformes** : Pawns/Honeygain peuvent rejeter une IP temporairement (`tcpip-forward denied` / `Network Unusable`) — délai plateforme, pas un bug de la stack.
 - **`network_mode: service:`** : les providers dépendent de `gateway-isp-{n}` sain (`condition: service_healthy`) — ne jamais activer un provider sans sa passerelle (fail-closed, voir `compose_profiles_args` dans `scripts/lib.sh`).

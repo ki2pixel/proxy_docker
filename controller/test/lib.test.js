@@ -23,8 +23,8 @@ test('redactSecrets masque les valeurs de clés secrètes', () => {
     'ISP_PROXY_PASS="***"'
   );
   assert.equal(
-    redactSecrets('TRAFFMONETIZER_TOKEN="jeton-traffmonetizer-1234567890"'),
-    'TRAFFMONETIZER_TOKEN="***"'
+    redactSecrets('ANTGAIN_API_KEY="jeton-antgain-1234567890"'),
+    'ANTGAIN_API_KEY="***"'
   );
 });
 

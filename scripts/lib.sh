@@ -49,7 +49,7 @@ compose_profiles_args() {
     types=$(get_env COMPOSE_PROFILES "none" | tr ',' ' ' | tr -s ' ')
     # "all" = tous les types ; "none" = aucun provider
     if [ "$types" = "all" ]; then
-        types="traffmonetizer honeygain packetstream pawns repocket"
+        types="antgain honeygain packetstream pawns repocket"
     elif [ "$types" = "none" ]; then
         types=""
     fi

@@ -41,6 +41,6 @@ Cause confirmée via le journal système (`journalctl`) :
 
 ## Piste d'optimisation future — désactivation des monétiseurs peu rentables
 
-- **Packetstream** est parmi les moins rémunérateurs observés (Proxyrack, encore moins rentable, a été retiré de la stack au profit de TraffMonetizer).
+- **Packetstream** est parmi les moins rémunérateurs observés (TraffMonetizer a été remplacé au profit de Antgain).
 - Les désactiver libérerait **4 × 2 = 8 conteneurs** (un par passerelle × 4), réduisant la pression RAM de ~200–250 Mo et stabilisant la stack.
 - Décision à prendre selon l'évolution des taux de rentabilité observés dans le widget.
