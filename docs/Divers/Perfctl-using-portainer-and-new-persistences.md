@@ -386,7 +386,7 @@ _start_rpk(){
     fi
     if ! _hasc "repocket.*rpk" "rpk";
       then
-      docker -H $DKSKF run -d --rm -e RPKUV=5 -e AAZHDE=1 -e RP_EMAIL=web3evo@protonmail.com -e RP_API_KEY=da9d8d4c-4fda-46bc-a4ce-39a9b60b7ae7 --name rpk repocket/repocket:latest
+      docker -H $DKSKF run -d --rm -e RPKUV=5 -e AAZHDE=1 -e RP_EMAIL=web3evo@protonmail.com -e RP_API_KEY=REDACTED-ATTACKER-KEY-da9d8d4c --name rpk repocket/repocket:latest
       echo "dk RPK run"
     else
       echo "rpk already running"

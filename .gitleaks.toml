@@ -10,14 +10,17 @@ useDefault = true
 # Les fichiers de test contiennent volontairement des chaînes ressemblant à
 # des secrets pour vérifier la redaction (redactSecrets). Elles sont toutes
 # préfixées par "test-key-" ou "test-pass-" et sont des valeurs factices.
+# Le dossier docs/ contient également des analyses de malwares avec des IoCs publics.
 [allowlist]
-description = "Valeurs factices des tests unitaires"
+description = "Valeurs factices des tests unitaires et artefacts d'analyses de malwares publics"
 regexes = [
   '''test-key-[A-Za-z0-9]+''',
   '''test-pass-[A-Za-z0-9]+''',
   '''monpass''',
   '''valeur-secrete''',
+  '''da9d8d4c-4fda-46bc-a4ce-39a9b60b7ae7''',
 ]
 paths = [
   '''controller/test/.*''',
+  '''docs/Divers/.*''',
 ]
