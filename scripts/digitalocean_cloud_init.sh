@@ -97,10 +97,25 @@ if grep -qE "CHANGEME_|votre_" .env; then
     exit 1
 fi
 
-# 6. Pare-feu & Démarrage
-echo "[6/6] Configuration du Pare-feu UFW (SSH 22 uniquement)..."
+# 6. Pare-feu & Durcissement Sécurité
+echo "[6/6] Configuration du Pare-feu UFW & Durcissement Sécurité..."
 ufw allow 22/tcp || true
 ufw --force enable || true
+
+# Durcissement comptes dormants (prévention Perfctl SSH backdoor)
+for u in news nobody daemon sync games lp mail operator; do
+    if id "$u" >/dev/null 2>&1; then
+        usermod -s /usr/sbin/nologin "$u" 2>/dev/null || true
+        passwd -l "$u" 2>/dev/null || true
+    fi
+done
+
+# Filtrage IMDS Cloud (169.254.169.254) pour conteneurs Docker
+if command -v iptables >/dev/null 2>&1; then
+    if iptables -L DOCKER-USER >/dev/null 2>&1; then
+        iptables -C DOCKER-USER -d 169.254.169.254/32 -j DROP 2>/dev/null || iptables -I DOCKER-USER -d 169.254.169.254/32 -j DROP
+    fi
+fi
 
 # Lancement des conteneurs
 echo "[*] Démarrage de la stack Docker Compose..."

@@ -21,6 +21,7 @@ Langue du projet : **français** — code, commentaires, messages de log et docs
 | Bascule du provider actif | `./scripts/switch_provider.sh` |
 | Test connectivité proxy | `./scripts/test_proxy.sh [gateway]` |
 | Benchmark stack | `./scripts/benchmark.sh` |
+| Audit de sécurité & Perfctl | `./scripts/security_audit.sh` (vérif LD_PRELOAD, comptes dormants, ports, IMDS) |
 
 ## Architecture
 

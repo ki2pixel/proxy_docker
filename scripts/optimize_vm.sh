@@ -16,6 +16,7 @@
 #   6. /etc/docker/daemon.json : runtime crun, log driver local,
 #      live-restore, userland-proxy off, ip6tables off, no-new-privileges
 #   7. Overrides systemd docker/containerd : GOMEMLIMIT/GOGC + limites cgroup
+#   8. Durcissement sécurité : verrouillage comptes dormants + filtrage IMDS Cloud (169.254.169.254)
 #
 # Usage :
 #   sudo ./scripts/optimize_vm.sh            # applique tout (idempotent)
@@ -272,6 +273,40 @@ if { [ "$NEED_RESTART_DOCKER" -eq 1 ] || [ "$NEED_RESTART_CONTAINERD" -eq 1 ]; }
             systemctl restart docker
         fi
         ok "démons redémarrés"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# 9. Durcissement sécurité : comptes dormants & filtrage IMDS Cloud
+# ---------------------------------------------------------------------------
+log "durcissement sécurité : verrouillage des comptes de service dormants..."
+for u in news nobody daemon sync games lp mail operator; do
+    if id "$u" >/dev/null 2>&1; then
+        if [ "$DRY_RUN" -eq 1 ]; then
+            printf '  [dry-run] usermod -s /usr/sbin/nologin %s ; passwd -l %s\n' "$u" "$u"
+        else
+            usermod -s /usr/sbin/nologin "$u" 2>/dev/null || true
+            passwd -l "$u" 2>/dev/null || true
+        fi
+    fi
+done
+ok "comptes de service dormants vérifiés/verrouillés"
+
+log "filtrage réseau : blocage de l'Instance Metadata Service Cloud (169.254.169.254)..."
+if command -v iptables >/dev/null 2>&1; then
+    if [ "$DRY_RUN" -eq 1 ]; then
+        printf '  [dry-run] iptables -C DOCKER-USER -d 169.254.169.254/32 -j DROP || iptables -I DOCKER-USER -d 169.254.169.254/32 -j DROP\n'
+    else
+        if iptables -L DOCKER-USER >/dev/null 2>&1; then
+            if ! iptables -C DOCKER-USER -d 169.254.169.254/32 -j DROP 2>/dev/null; then
+                iptables -I DOCKER-USER -d 169.254.169.254/32 -j DROP
+                ok "règle iptables DOCKER-USER (drop 169.254.169.254) ajoutée"
+            else
+                ok "règle iptables DOCKER-USER (drop 169.254.169.254) déjà active"
+            fi
+        else
+            warn "chaîne DOCKER-USER non initialisée (Docker pas encore lancé ?) - règle reportée au démarrage Docker"
+        fi
     fi
 fi
 

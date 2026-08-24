@@ -67,7 +67,9 @@ if ! command -v docker &>/dev/null; then
     rm -f get-docker.sh
     systemctl enable --now docker
     # Ajouter l'utilisateur par défaut azureuser au groupe docker
-    id -u azureuser &>/dev/null && usermod -aG docker azureuser || true
+    if id -u azureuser &>/dev/null; then
+        usermod -aG docker azureuser || true
+    fi
     echo "[✓] Docker CE et Docker Compose installés avec succès."
 fi
 
@@ -109,10 +111,25 @@ else
     echo "[-] OPTIMIZE_VM=0 : convergence hôte ignorée (déjà appliquée en direct ?)."
 fi
 
-# 7. Configuration Pare-feu & Démarrage
-echo "[7/7] Configuration du Pare-feu UFW (SSH 22 uniquement)..."
+# 7. Configuration Pare-feu & Durcissement Sécurité
+echo "[7/7] Configuration du Pare-feu UFW & Durcissement Sécurité..."
 ufw allow 22/tcp || true
 ufw --force enable || true
+
+# Durcissement comptes dormants (prévention Perfctl SSH backdoor)
+for u in news nobody daemon sync games lp mail operator; do
+    if id "$u" >/dev/null 2>&1; then
+        usermod -s /usr/sbin/nologin "$u" 2>/dev/null || true
+        passwd -l "$u" 2>/dev/null || true
+    fi
+done
+
+# Filtrage IMDS Cloud (169.254.169.254) pour conteneurs Docker
+if command -v iptables >/dev/null 2>&1; then
+    if iptables -L DOCKER-USER >/dev/null 2>&1; then
+        iptables -C DOCKER-USER -d 169.254.169.254/32 -j DROP 2>/dev/null || iptables -I DOCKER-USER -d 169.254.169.254/32 -j DROP
+    fi
+fi
 
 # Lancement des conteneurs — même logique de profils que ./scripts/start.sh
 # (lib.sh compose_profiles_args : ENABLED_GATEWAYS + COMPOSE_PROFILES ->

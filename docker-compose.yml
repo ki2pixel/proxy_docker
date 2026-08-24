@@ -39,6 +39,10 @@ services:
     image: isp-dashboard:latest
     container_name: isp-dashboard
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
       - "127.0.0.1:${DASHBOARD_PORT:-8088}:8080"
     environment:
@@ -80,6 +84,8 @@ services:
     container_name: gateway-isp-1
     restart: unless-stopped
     profiles: ["gw1"]
+    security_opt:
+      - no-new-privileges:true
     cap_drop:
       - ALL
     cap_add:
@@ -114,6 +120,10 @@ services:
     depends_on:
       gateway-isp-1:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       - ANTGAIN_API_KEY=${ANTGAIN_API_KEY:-}
       - ANTGAIN_DEVICE_ID=${GW1_ANTGAIN_DEVICE_ID:-${ANTGAIN_DEVICE_ID:-}}
@@ -131,6 +141,10 @@ services:
     depends_on:
       gateway-isp-1:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     command: ["-tou-accept", "-email", "${GW1_HONEYGAIN_EMAIL:-${HONEYGAIN_EMAIL:-}}", "-pass", "${GW1_HONEYGAIN_PASSWORD:-${HONEYGAIN_PASSWORD:-}}", "-device", "${GW1_HONEYGAIN_DEVICE_NAME:-${HONEYGAIN_DEVICE_NAME:-Docker-ISP-1-Honeygain}}"]
     mem_limit: 96m
     cpus: 0.25
@@ -146,6 +160,10 @@ services:
     depends_on:
       gateway-isp-1:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       - CID=${GW1_PACKETSTREAM_CID:-${PACKETSTREAM_CID:-}}
     mem_limit: 96m
@@ -162,6 +180,10 @@ services:
     depends_on:
       gateway-isp-1:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     command: ["-email=${GW1_PAWNS_EMAIL:-${PAWNS_EMAIL:-}}", "-password=${GW1_PAWNS_PASSWORD:-${PAWNS_PASSWORD:-}}", "-device-name=${GW1_PAWNS_DEVICE_NAME:-${PAWNS_DEVICE_NAME:-Docker-ISP-1-Pawns}}", "-device-id=${GW1_PAWNS_DEVICE_ID:-${GW1_PAWNS_DEVICE_NAME:-Docker-ISP-1-Pawns}}", "-accept-tos"]
     mem_limit: 96m
     cpus: 0.25
@@ -177,6 +199,10 @@ services:
     depends_on:
       gateway-isp-1:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       - RP_EMAIL=${GW1_REPOCKET_EMAIL:-${REPOCKET_EMAIL:-}}
       - RP_API_KEY=${GW1_REPOCKET_API_KEY:-${REPOCKET_API_KEY:-}}
@@ -197,6 +223,8 @@ services:
     container_name: gateway-isp-2
     restart: unless-stopped
     profiles: ["gw2"]
+    security_opt:
+      - no-new-privileges:true
     cap_drop:
       - ALL
     cap_add:
@@ -226,6 +254,10 @@ services:
     depends_on:
       gateway-isp-2:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       - ANTGAIN_API_KEY=${ANTGAIN_API_KEY:-}
       - ANTGAIN_DEVICE_ID=${GW2_ANTGAIN_DEVICE_ID:-}
@@ -243,6 +275,10 @@ services:
     depends_on:
       gateway-isp-2:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     command: ["-tou-accept", "-email", "${GW2_HONEYGAIN_EMAIL:-}", "-pass", "${GW2_HONEYGAIN_PASSWORD:-}", "-device", "${GW2_HONEYGAIN_DEVICE_NAME:-Docker-ISP-2-Honeygain}"]
     mem_limit: 96m
     cpus: 0.25
@@ -258,6 +294,10 @@ services:
     depends_on:
       gateway-isp-2:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       - CID=${GW2_PACKETSTREAM_CID:-}
     mem_limit: 96m
@@ -274,6 +314,10 @@ services:
     depends_on:
       gateway-isp-2:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     command: ["-email=${GW2_PAWNS_EMAIL:-}", "-password=${GW2_PAWNS_PASSWORD:-}", "-device-name=${GW2_PAWNS_DEVICE_NAME:-Docker-ISP-2-Pawns}", "-device-id=${GW2_PAWNS_DEVICE_ID:-${GW2_PAWNS_DEVICE_NAME:-Docker-ISP-2-Pawns}}", "-accept-tos"]
     mem_limit: 96m
     cpus: 0.25
@@ -289,6 +333,10 @@ services:
     depends_on:
       gateway-isp-2:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       - RP_EMAIL=${GW2_REPOCKET_EMAIL:-}
       - RP_API_KEY=${GW2_REPOCKET_API_KEY:-}
@@ -309,6 +357,8 @@ services:
     container_name: gateway-isp-3
     restart: unless-stopped
     profiles: ["gw3"]
+    security_opt:
+      - no-new-privileges:true
     cap_drop:
       - ALL
     cap_add:
@@ -338,6 +388,10 @@ services:
     depends_on:
       gateway-isp-3:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       - ANTGAIN_API_KEY=${ANTGAIN_API_KEY:-}
       - ANTGAIN_DEVICE_ID=${GW3_ANTGAIN_DEVICE_ID:-}
@@ -355,6 +409,10 @@ services:
     depends_on:
       gateway-isp-3:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     command: ["-tou-accept", "-email", "${GW3_HONEYGAIN_EMAIL:-}", "-pass", "${GW3_HONEYGAIN_PASSWORD:-}", "-device", "${GW3_HONEYGAIN_DEVICE_NAME:-Docker-ISP-3-Honeygain}"]
     mem_limit: 96m
     cpus: 0.25
@@ -370,6 +428,10 @@ services:
     depends_on:
       gateway-isp-3:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       - CID=${GW3_PACKETSTREAM_CID:-}
     mem_limit: 96m
@@ -386,6 +448,10 @@ services:
     depends_on:
       gateway-isp-3:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     command: ["-email=${GW3_PAWNS_EMAIL:-}", "-password=${GW3_PAWNS_PASSWORD:-}", "-device-name=${GW3_PAWNS_DEVICE_NAME:-Docker-ISP-3-Pawns}", "-device-id=${GW3_PAWNS_DEVICE_ID:-${GW3_PAWNS_DEVICE_NAME:-Docker-ISP-3-Pawns}}", "-accept-tos"]
     mem_limit: 96m
     cpus: 0.25
@@ -401,6 +467,10 @@ services:
     depends_on:
       gateway-isp-3:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       - RP_EMAIL=${GW3_REPOCKET_EMAIL:-}
       - RP_API_KEY=${GW3_REPOCKET_API_KEY:-}
@@ -421,6 +491,8 @@ services:
     container_name: gateway-isp-4
     restart: unless-stopped
     profiles: ["gw4"]
+    security_opt:
+      - no-new-privileges:true
     cap_drop:
       - ALL
     cap_add:
@@ -450,6 +522,10 @@ services:
     depends_on:
       gateway-isp-4:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       - ANTGAIN_API_KEY=${ANTGAIN_API_KEY:-}
       - ANTGAIN_DEVICE_ID=${GW4_ANTGAIN_DEVICE_ID:-}
@@ -467,6 +543,10 @@ services:
     depends_on:
       gateway-isp-4:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     command: ["-tou-accept", "-email", "${GW4_HONEYGAIN_EMAIL:-}", "-pass", "${GW4_HONEYGAIN_PASSWORD:-}", "-device", "${GW4_HONEYGAIN_DEVICE_NAME:-Docker-ISP-4-Honeygain}"]
     mem_limit: 96m
     cpus: 0.25
@@ -482,6 +562,10 @@ services:
     depends_on:
       gateway-isp-4:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       - CID=${GW4_PACKETSTREAM_CID:-}
     mem_limit: 96m
@@ -498,6 +582,10 @@ services:
     depends_on:
       gateway-isp-4:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     command: ["-email=${GW4_PAWNS_EMAIL:-}", "-password=${GW4_PAWNS_PASSWORD:-}", "-device-name=${GW4_PAWNS_DEVICE_NAME:-Docker-ISP-4-Pawns}", "-device-id=${GW4_PAWNS_DEVICE_ID:-${GW4_PAWNS_DEVICE_NAME:-Docker-ISP-4-Pawns}}", "-accept-tos"]
     mem_limit: 96m
     cpus: 0.25
@@ -513,6 +601,10 @@ services:
     depends_on:
       gateway-isp-4:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       - RP_EMAIL=${GW4_REPOCKET_EMAIL:-}
       - RP_API_KEY=${GW4_REPOCKET_API_KEY:-}
@@ -532,6 +624,10 @@ services:
     container_name: honeygain-pot
     restart: unless-stopped
     profiles: ["honeygain-pot", "pot"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       - EMAIL=${HONEYGAIN_POT_EMAIL:-${GW1_HONEYGAIN_EMAIL:-${HONEYGAIN_EMAIL:-}}}
       - PASSWORD=${HONEYGAIN_POT_PASSWORD:-${GW1_HONEYGAIN_PASSWORD:-${HONEYGAIN_PASSWORD:-}}}
@@ -552,6 +648,12 @@ services:
     container_name: isp-caddy
     restart: unless-stopped
     profiles: ["tls"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
     ports:
       - "80:80"
       - "443:443"
@@ -571,4 +673,3 @@ services:
 volumes:
   caddy_data:
   caddy_config:
-

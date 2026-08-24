@@ -21,6 +21,13 @@ description: Règles de sécurité du projet — secrets, redaction des logs, da
   - Les sessions résidentielles (`session-*`) sont aussi masquées.
 - API : toutes les routes sous `requireAuth`, les écritures aussi sous `requireCsrf`.
 
+## Durcissement Conteneurs & Hôte (Anti-Perfctl / Proxyjacking)
+
+- **Conteneurs** : tous les services (providers, dashboard, honeygain-pot, caddy) ont `security_opt: [no-new-privileges:true]` et `cap_drop: [ALL]`. Seules les passerelles `gateway-isp` ont `cap_add: [NET_ADMIN, NET_BIND_SERVICE]`.
+- **Hôte Linux** : comptes dormants (`news`, `nobody`, `daemon`, etc.) verrouillés avec shell `/usr/sbin/nologin` et mot de passe désactivé.
+- **Réseau** : chaîne iptables `DOCKER-USER` bloquant l'accès à l'IMDS Cloud (`169.254.169.254/32`) pour les conteneurs Docker.
+- **Audit** : `./scripts/security_audit.sh` pour auditer l'intégrité de la VM hôte.
+
 ## CI
 
 - `security.yml` scanne : gitleaks (secrets), shellcheck (scripts bash), npm audit + tests (controller).

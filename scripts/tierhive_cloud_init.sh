@@ -117,10 +117,25 @@ fi
 # Autoriser uniquement 2755 puis activer UFW couperait tout accès SSH
 # (default deny incoming). On autorise 22 ET 2755 pour couvrir les deux
 # architectures : forward 2755→22 (Tierhive) ou sshd direct sur 2755.
-echo "[7/7] Configuration du Pare-feu UFW (SSH 22 interne + 2755 public)..."
+echo "[7/7] Configuration du Pare-feu UFW & Durcissement Sécurité..."
 ufw allow 22/tcp || true
 ufw allow 2755/tcp || true
 ufw --force enable || true
+
+# Durcissement comptes dormants (prévention Perfctl SSH backdoor)
+for u in news nobody daemon sync games lp mail operator; do
+    if id "$u" >/dev/null 2>&1; then
+        usermod -s /usr/sbin/nologin "$u" 2>/dev/null || true
+        passwd -l "$u" 2>/dev/null || true
+    fi
+done
+
+# Filtrage IMDS Cloud (169.254.169.254) pour conteneurs Docker
+if command -v iptables >/dev/null 2>&1; then
+    if iptables -L DOCKER-USER >/dev/null 2>&1; then
+        iptables -C DOCKER-USER -d 169.254.169.254/32 -j DROP 2>/dev/null || iptables -I DOCKER-USER -d 169.254.169.254/32 -j DROP
+    fi
+fi
 
 echo "========================================================"
 echo "✅ Initialisation Tierhive terminée !"
