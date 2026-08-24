@@ -125,14 +125,14 @@ SSH_PORT=2755 ./scripts/sync_env.sh --push-only 147.135.16.160 docs/Tierhive/Pro
 
 **Solution :** un relais SOCKS5 sur la VM **Azure** (qui a un accès direct aux proxys) ré-écrit chaque connexion vers le proxy Proxiware. Les gateways Tierhive ne parlent plus jamais au port 1337 directement.
 
-* **Script** : [`scripts/proxiware_relay.py`](scripts/proxiware_relay.py) — serveur SOCKS5 avec chaînage vers un proxy parent (SOCKS5→SOCKS5). Usage : `python3 proxiware_relay.py LISTEN_PORT PARENT_USER PARENT_PASS PARENT_HOST PARENT_PORT`
+* **Script** : [`scripts/proxiware_relay.py`](scripts/proxiware_relay.py) — serveur SOCKS5 avec chaînage vers un proxy parent (SOCKS5→SOCKS5, support complet **TCP CONNECT** et **SOCKS5 UDP ASSOCIATE** pour QUIC, avec **`SO_KEEPALIVE`** sans timeout artificiel pour les tunnels persistants). Usage : `python3 proxiware_relay.py LISTEN_PORT PARENT_USER PARENT_PASS PARENT_HOST PARENT_PORT`
 * **Déploiement Azure** : 4 services systemd `proxiware-relay-{1..4}.service` (`/etc/systemd/system/`), un par proxy Proxiware :
   * `relay-1` → port `10801` → `188.221.160.44:1337`
   * `relay-2` → port `10802` → `78.105.196.114:1337`
   * `relay-3` → port `10803` → `188.220.211.175:1337`
   * `relay-4` → port `10804` → `82.41.242.219:1337`
   * Config type : `ExecStart=/usr/bin/python3 /home/azureuser/proxiware_relay.py 10801 <USER_PROXIWARE> <PASS_PROXIWARE> 188.221.160.44 1337` (+ `Restart=always`)
-* **Ports** : ouvrir `10801-10804/tcp` dans **UFW** *et* dans le **NSG Azure** (les deux firewalls sont nécessaires — UFW seul ne suffit pas, le NSG bloque avant la VM).
+* **Ports** : ouvrir `10801-10804` en **TCP et UDP** dans **UFW** (`sudo ufw allow 10801:10804/tcp && sudo ufw allow 10801:10804/udp`) *et* dans le **NSG Azure** (les deux firewalls sont nécessaires — le trafic UDP est indispensable pour le protocole QUIC d'Antgain sur 8443, et TCP pour les flux HTTP/SSH/WebSockets de Repocket, Pawns, Honeygain).
 * **Côté Tierhive** : dans `.env2`, chaque `GW{n}_ISP_PROXY_HOST` = `68.210.184.174`, `GW{n}_ISP_PROXY_PORT` = `1080{n}`, `GW{n}_ISP_PROXY_USER`/`PASS` = vides (le relais gère l'auth Proxiware en interne). Le gateway parle alors au relais sans authentification.
 * **Réseau du gateway** : la bypass rule (`ip rule pref 1004`) du proxy host `68.210.184.174` est posée automatiquement par l'entrypoint — le trafic vers Azure ne passe pas par le tunnel.
 
@@ -267,7 +267,7 @@ Tableau de bord Web : **[http://localhost:8088](http://localhost:8088)** — con
 | [`scripts/sync_env.sh`](scripts/sync_env.sh) | **Synchronise un `.env` local vers la VM** : `./scripts/sync_env.sh <IP> <CHEMIN_CLE> [user] [APP_DIR] [ENV_SOURCE] [--push-only]`. `ENV_SOURCE` (défaut `.env`) permet de gérer **plusieurs VM** : `.env` pour Azure, `.env2` pour Tierhive. `--push-only` pousse le `.env` sans lancer `docker compose up` (recommandé pour une nouvelle VM — lancez ensuite `start.sh`). Prérequis : serveur dans `known_hosts` (`ssh-keyscan -H <IP> >> ~/.ssh/known_hosts`), port custom via `SSH_PORT` (ex. `SSH_PORT=2755` pour Tierhive). ⚠️ Écrase le `.env` distant (confirmation requise) ; refuse les fichiers contenant des `CHANGEME_`. |
 | [`scripts/azure_cloud_init.sh`](scripts/azure_cloud_init.sh) | Script cloud-init pour VM Azure Debian 13 : swap 512 Mo, TUN, Docker, clonage du repo puis démarrage **avec la logique de profils de `start.sh`** (`ENABLED_GATEWAYS` + `COMPOSE_PROFILES` via `lib.sh`). Convergence hôte via `optimize_vm.sh` si `OPTIMIZE_VM=1` (OFF par défaut sur Azure — déjà optimisée). |
 | [`scripts/tierhive_cloud_init.sh`](scripts/tierhive_cloud_init.sh) | Script cloud-init pour VM **Tierhive** (KVM, 1 vCPU/1 Go) : swap 512 Mo, TUN, Docker, UFW sur SSH 2755, **convergence hôte activée par défaut** (`OPTIMIZE_VM=1` → zRAM, crun, earlyoom). Ne crée pas de `.env` (synchronisation via `sync_env.sh`). |
-| [`scripts/proxiware_relay.py`](scripts/proxiware_relay.py) | **Serveur SOCKS5 avec chaînage** (déployé sur Azure) : écoute sur un port local et ré-écrit chaque connexion vers un proxy parent Proxiware:1337. Usage : `python3 proxiware_relay.py LISTEN_PORT PARENT_USER PARENT_PASS PARENT_HOST PARENT_PORT`. Contourne le blocage **port 1337 de Tierhive** (voir section relais). |
+| [`scripts/proxiware_relay.py`](scripts/proxiware_relay.py) | **Serveur SOCKS5 avec chaînage** (déployé sur Azure) : écoute sur un port local et ré-écrit chaque connexion vers un proxy parent Proxiware:1337 (support **TCP CONNECT** + **SOCKS5 UDP ASSOCIATE** pour QUIC/UDP, `SO_KEEPALIVE`). Usage : `python3 proxiware_relay.py LISTEN_PORT PARENT_USER PARENT_PASS PARENT_HOST PARENT_PORT`. Contourne le blocage **port 1337 de Tierhive** (voir section relais). |
 | [`scripts/optimize_vm.sh`](scripts/optimize_vm.sh) | **Convergence hôte pour petites VM** (idempotent, `--dry-run`) : zRAM (swap compressé en RAM, priorité 100), swap disque 512 Mo (filet de secours), sysctl (`swappiness=100`, `page-cluster=0`, `vfs_cache_pressure=50`), earlyoom (anti-OOM), `/etc/docker/daemon.json` (runtime `crun`, log driver `local`, `live-restore`, `userland-proxy:false`, `ip6tables:false`, `no-new-privileges`) et overrides systemd `GOMEMLIMIT`/`GOGC` pour dockerd/containerd. Appelé par les cloud-init via `OPTIMIZE_VM`. |
 | [`scripts/digitalocean_cloud_init.sh`](scripts/digitalocean_cloud_init.sh) | Script cloud-init pour DigitalOcean Droplet. |
 | [`scripts/vultr_cloud_init.sh`](scripts/vultr_cloud_init.sh) | Script cloud-init pour Vultr Cloud Compute. |
@@ -305,6 +305,7 @@ Dans votre dépôt GitHub (***Settings ➔ Secrets and variables ➔ Actions***)
 
 ## 7. Documentation Technique Approfondie
 
+* 📄 [Guide Client Docker Antgain](docs/Antgain/Antgain_Client_Docker_Setup_Guide.md) : Installation, variables `ANTGAIN_API_KEY`, UUIDs stables par nœud et routage QUIC/UDP port 8443.
 * 📄 [Évaluation Déploiement Stack Docker sur Azure](docs/Recherches/Évaluation_Stack_Docker_sur_Azure.md) : Analyse Hyper-V, TUN/TAP, dimensionnement VM série B, quotas de bande passante et sécurité.
 * 📄 [Guide d'Intégration Passerelle ISP / Static Residential](docs/Integration_Passerelle_ISP_Residential.md) : Comparatif des fournisseurs de proxys et guide d'optimisation.
 * 📄 [Multi-Passerelles : 4 Pools d'IP](docs/Multi_Gateways_4_Proxies.md) : Dimensionnement, déploiement multi-proxys, profils compose et migration.
