@@ -30,6 +30,7 @@ gateway-isp/              # entrypoint.sh (TUN + routage + DoH + watchdog), heal
 controller/               # Dashboard Express.js + orchestration Docker (index.js, lib.js, public/)
 traffmonetizer/            # wrapper Alpine du client officiel (binaire statique sans shell)
 scripts/                  # start.sh, lib.sh (bibliothèque partagée), outils ops
+scripts/proxiware_relay.py # Relais SOCKS5 (déployé sur Azure) : chaînage vers les proxys Proxiware — contourne le blocage port 1337 de Tierhive
 docs/                     # Documentation technique approfondie (Azure, multi-passerelles, routage)
 ```
 
@@ -81,6 +82,7 @@ Profils compose **combinés** `gw{n}-{type}` (ex. `gw1-traffmonetizer`) + profil
 
 ## Pièges connus (retour d'expérience)
 
+- **Tierhive bloque le port 1337 sortant** : les proxys statiques Proxiware écoutent tous sur 1337 (port fixe), donc une VM Tierhive ne peut jamais les joindre directement — timeout TCP tous ports vers les IPs Proxiware, ICMP OK, reste d'Internet OK. Symptôme identique sur plusieurs IPs sources/localisations → ce n'est PAS un problème d'IP source, de swap ou de config. **Solution** : relais SOCKS5 sur la VM Azure (`scripts/proxiware_relay.py`, services `proxiware-relay-{1..4}`, ports 10801–10804) ; les gateways Tierhive pointent vers `68.210.184.174:1080{n}` via `.env2` (USER/PASS vides). Voir README « Relais SOCKS5 Azure → Proxiware ».
 - **Frontend périmé** : les assets sont hashés (`app.<hash>.js`, `max-age=1y, immutable`) — un redéploiement change le hash. Si un navigateur affiche encore une vieille UI en navigation privée, c'est qu'un **ancien conteneur ou tunnel local** squatte le port 8088 et shadow la VM — vérifier `docker ps` / `ss -tlnp | grep 8088`, arrêter la stack locale, pas blâmer le cache d'abord.
 - **TraffMonetizer** : un token global partagé (`TRAFFMONETIZER_TOKEN`, Dashboard → Token sur app.traffmonetizer.com — un seul token pour les 4 devices) + un nom de device par passerelle (`GW{n}_TRAFFMONETIZER_DEVICE_NAME`). L'image officielle `traffmonetizer/cli_v2` est un binaire statique **sans shell** : on passe par le wrapper `traffmonetizer/` (Alpine + `entrypoint.sh` qui exécute `cli start accept --token "$TRAFFMONETIZER_TOKEN"`). Le token reste en variable d'env (jamais dans `Config.Cmd` ni les logs). Aucun volume.
 - **Honeygain** : après un redémarrage, `Device with this name is already active` temporaire — auto-résorbable en quelques minutes.

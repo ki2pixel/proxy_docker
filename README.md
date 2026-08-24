@@ -96,7 +96,7 @@ ssh -i docs/Azure/ProxyMonetisation_key.pem -o IdentitiesOnly=yes \
   -L 8088:localhost:8088 azureuser@<IP_PUBLIQUE_AZURE>
 # puis ouvrez http://localhost:8088 dans votre navigateur
 ```
-> 💡 **Options expliquées** : `Compression no` (le serveur HTTP compresse déjà en Brotli — pas de double encodage), `ControlMaster` (réutilise la connexion pour les ssh/scp suivants), `ServerAlive*` (garder le tunnel vivant derrière le NAT Azure), `ExitOnForwardFailure` (échoue si le port 8088 est déjà pris — détecte un tunnel/conteneur local parasite). Le fichier `cmd_ssh_dashboard.txt` à la racine contient la version complète avec l'alternative `~/.ssh/config`.
+> 💡 **Options expliquées** : `Compression no` (le serveur HTTP compresse déjà en Brotli — pas de double encodage), `ControlMaster` (réutilise la connexion pour les ssh/scp suivants), `ServerAlive*` (garder le tunnel vivant derrière le NAT Azure), `ExitOnForwardFailure` (échoue si le port 8088 est déjà pris — détecte un tunnel/conteneur local parasite). Les fichiers `cmd_ssh_dashboard_vm_azure.txt` / `cmd_ssh_dashboard_vm_tierhive.txt` à la racine contiennent la version complète (tunnel + alternative `~/.ssh/config`) pour chaque VM.
 
 Connexion avec le `DASHBOARD_TOKEN` défini dans `.env` (généré avec `openssl rand -hex 32`).
 
@@ -104,7 +104,7 @@ Connexion avec le `DASHBOARD_TOKEN` défini dans `.env` (généré avec `openssl
 
 Chaque VM héberge sa **propre stack** avec son **propre `.env`** (gitignoré). Sur la machine locale, on garde un fichier par VM :
 - `.env` → VM Azure (ex. `68.210.184.174`, user `azureuser`)
-- `.env2` → VM Tierhive (ex. `85.155.184.191`, user `root`, port SSH `2755`)
+- `.env2` → VM Tierhive (ex. `147.135.16.160`, user `root`, port SSH `2755`)
 
 ```bash
 # Synchroniser vers Azure (comportement historique)
@@ -112,12 +112,31 @@ Chaque VM héberge sa **propre stack** avec son **propre `.env`** (gitignoré). 
 
 # Synchroniser vers Tierhive (.env2 + port custom + user root) — push-only :
 #   on ne fait que pousser le .env, le démarrage est laissé à scripts/start.sh
-SSH_PORT=2755 ./scripts/sync_env.sh --push-only 85.155.184.191 docs/Tierhive/ProxyMonetisation1.txt root /opt/proxy_docker .env2
+SSH_PORT=2755 ./scripts/sync_env.sh --push-only 147.135.16.160 docs/Tierhive/ProxyMonetisation1.txt root /opt/proxy_docker .env2
 ```
 
 > **Nouvelle VM (recommandé)** : passez `--push-only` — `sync_env.sh` pousse alors le `.env` **sans** lancer `docker compose up`. Le démarrage complet (construction des images locales + profils + healthchecks) revient à `./scripts/start.sh` : évite un double `up` avec le compte rendu de `sync_env.sh`.
 
 > ⚠️ **Avant de déployer sur une 2e VM** : renommez les devices (`GW{n}_DEVICE_NAME`, `GW{n}_HONEYGAIN_DEVICE_NAME`, `GW{n}_PAWNS_DEVICE_NAME`) pour éviter les conflits de noms côté plateformes, laissez les `GW{n}_UUID` vides (auto-génération) et utilisez des **IP proxy amont différentes** — les monetiseurs rejettent des devices tournant sur les mêmes IP. Le script refuse de synchroniser un fichier contenant des `CHANGEME_` (garde-fou).
+
+### 🔗 Relais SOCKS5 Azure → Proxiware (contournement port 1337 Tierhive)
+
+**Pourquoi :** Tierhive **droppe le port 1337 sortant** (politique réseau confirmée par leur support), or **tous les proxys statiques Proxiware écoutent sur le port 1337** (port fixe, non modifiable). Une VM Tierhive ne peut donc jamais joindre directement un proxy Proxiware — peu importe l'IP source, la localisation ou le swap d'IP. Sur Azure, aucun blocage : le port 1337 sort librement.
+
+**Solution :** un relais SOCKS5 sur la VM **Azure** (qui a un accès direct aux proxys) ré-écrit chaque connexion vers le proxy Proxiware. Les gateways Tierhive ne parlent plus jamais au port 1337 directement.
+
+* **Script** : [`scripts/proxiware_relay.py`](scripts/proxiware_relay.py) — serveur SOCKS5 avec chaînage vers un proxy parent (SOCKS5→SOCKS5). Usage : `python3 proxiware_relay.py LISTEN_PORT PARENT_USER PARENT_PASS PARENT_HOST PARENT_PORT`
+* **Déploiement Azure** : 4 services systemd `proxiware-relay-{1..4}.service` (`/etc/systemd/system/`), un par proxy Proxiware :
+  * `relay-1` → port `10801` → `188.221.160.44:1337`
+  * `relay-2` → port `10802` → `78.105.196.114:1337`
+  * `relay-3` → port `10803` → `188.220.211.175:1337`
+  * `relay-4` → port `10804` → `82.41.242.219:1337`
+  * Config type : `ExecStart=/usr/bin/python3 /home/azureuser/proxiware_relay.py 10801 <USER_PROXIWARE> <PASS_PROXIWARE> 188.221.160.44 1337` (+ `Restart=always`)
+* **Ports** : ouvrir `10801-10804/tcp` dans **UFW** *et* dans le **NSG Azure** (les deux firewalls sont nécessaires — UFW seul ne suffit pas, le NSG bloque avant la VM).
+* **Côté Tierhive** : dans `.env2`, chaque `GW{n}_ISP_PROXY_HOST` = `68.210.184.174`, `GW{n}_ISP_PROXY_PORT` = `1080{n}`, `GW{n}_ISP_PROXY_USER`/`PASS` = vides (le relais gère l'auth Proxiware en interne). Le gateway parle alors au relais sans authentification.
+* **Réseau du gateway** : la bypass rule (`ip rule pref 1004`) du proxy host `68.210.184.174` est posée automatiquement par l'entrypoint — le trafic vers Azure ne passe pas par le tunnel.
+
+> ⚠️ **Dépendance** : la stack Tierhive dépend de la VM Azure et de ses 4 services relais. Si Azure est down ou que le NSG bloque les ports, les gateways Tierhive perdent leur proxy (ils repassent sur le watchdog, mais l'egress ISP est nécessaire pour les monetiseurs).
 
 ### 💾 Override compose pour petites VM (1 vCPU / 1 Go) :
 
@@ -248,6 +267,7 @@ Tableau de bord Web : **[http://localhost:8088](http://localhost:8088)** — con
 | [`scripts/sync_env.sh`](scripts/sync_env.sh) | **Synchronise un `.env` local vers la VM** : `./scripts/sync_env.sh <IP> <CHEMIN_CLE> [user] [APP_DIR] [ENV_SOURCE] [--push-only]`. `ENV_SOURCE` (défaut `.env`) permet de gérer **plusieurs VM** : `.env` pour Azure, `.env2` pour Tierhive. `--push-only` pousse le `.env` sans lancer `docker compose up` (recommandé pour une nouvelle VM — lancez ensuite `start.sh`). Prérequis : serveur dans `known_hosts` (`ssh-keyscan -H <IP> >> ~/.ssh/known_hosts`), port custom via `SSH_PORT` (ex. `SSH_PORT=2755` pour Tierhive). ⚠️ Écrase le `.env` distant (confirmation requise) ; refuse les fichiers contenant des `CHANGEME_`. |
 | [`scripts/azure_cloud_init.sh`](scripts/azure_cloud_init.sh) | Script cloud-init pour VM Azure Debian 13 : swap 512 Mo, TUN, Docker, clonage du repo puis démarrage **avec la logique de profils de `start.sh`** (`ENABLED_GATEWAYS` + `COMPOSE_PROFILES` via `lib.sh`). Convergence hôte via `optimize_vm.sh` si `OPTIMIZE_VM=1` (OFF par défaut sur Azure — déjà optimisée). |
 | [`scripts/tierhive_cloud_init.sh`](scripts/tierhive_cloud_init.sh) | Script cloud-init pour VM **Tierhive** (KVM, 1 vCPU/1 Go) : swap 512 Mo, TUN, Docker, UFW sur SSH 2755, **convergence hôte activée par défaut** (`OPTIMIZE_VM=1` → zRAM, crun, earlyoom). Ne crée pas de `.env` (synchronisation via `sync_env.sh`). |
+| [`scripts/proxiware_relay.py`](scripts/proxiware_relay.py) | **Serveur SOCKS5 avec chaînage** (déployé sur Azure) : écoute sur un port local et ré-écrit chaque connexion vers un proxy parent Proxiware:1337. Usage : `python3 proxiware_relay.py LISTEN_PORT PARENT_USER PARENT_PASS PARENT_HOST PARENT_PORT`. Contourne le blocage **port 1337 de Tierhive** (voir section relais). |
 | [`scripts/optimize_vm.sh`](scripts/optimize_vm.sh) | **Convergence hôte pour petites VM** (idempotent, `--dry-run`) : zRAM (swap compressé en RAM, priorité 100), swap disque 512 Mo (filet de secours), sysctl (`swappiness=100`, `page-cluster=0`, `vfs_cache_pressure=50`), earlyoom (anti-OOM), `/etc/docker/daemon.json` (runtime `crun`, log driver `local`, `live-restore`, `userland-proxy:false`, `ip6tables:false`, `no-new-privileges`) et overrides systemd `GOMEMLIMIT`/`GOGC` pour dockerd/containerd. Appelé par les cloud-init via `OPTIMIZE_VM`. |
 | [`scripts/digitalocean_cloud_init.sh`](scripts/digitalocean_cloud_init.sh) | Script cloud-init pour DigitalOcean Droplet. |
 | [`scripts/vultr_cloud_init.sh`](scripts/vultr_cloud_init.sh) | Script cloud-init pour Vultr Cloud Compute. |

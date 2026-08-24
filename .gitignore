@@ -7,6 +7,8 @@ node_modules/
 *.key
 docs/Azure/*.pem
 .commandcode/
-cmd_ssh_dashboard.txt
+cmd_ssh_dashboard*.txt
 /docs/Tierhive/*.pub
 /docs/Tierhive/*.txt
+__pycache__/
+*.pyc

@@ -26,3 +26,9 @@ description: Gestion du .env et de la configuration — clés par passerelle, gl
 - L'éditeur du dashboard (`PUT /api/config`) utilise une **allowlist** de clés connues — pas de mode fichier brut.
 - Les champs secrets sont masqués (champ vide = inchangé).
 - `scripts/sync_env.sh` écrase le `.env` distant (confirmation requise) — attention à ne pas écraser les changements faits via le dashboard.
+
+## Multi-VM : `.env` (Azure) / `.env2` (Tierhive)
+
+- `.env` → VM Azure ; `.env2` → VM Tierhive (IP 147.135.16.160, user `root`, SSH port `2755`). `.env2` est gitignoré comme `.env`.
+- Sur Tierhive, `GW{n}_ISP_PROXY_HOST` pointe vers le **relais Azure** (`68.210.184.174`, ports `10801`-`10804`) — jamais directement vers une IP Proxiware (port 1337 bloqué par Tierhive). `GW{n}_ISP_PROXY_USER`/`PASS` sont **vides** sur Tierhive (le relais gère l'auth Proxiware en interne).
+- Synchronisation : `SSH_PORT=2755 ./scripts/sync_env.sh --push-only <IP_TIERHIVE> docs/Tierhive/ProxyMonetisation1.txt root /opt/proxy_docker .env2` (puis `start.sh` sur la VM).
