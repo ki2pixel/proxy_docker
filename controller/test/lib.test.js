@@ -26,6 +26,10 @@ test('redactSecrets masque les valeurs de clés secrètes', () => {
     redactSecrets('ANTGAIN_API_KEY="jeton-antgain-1234567890"'),
     'ANTGAIN_API_KEY="***"'
   );
+  assert.equal(
+    redactSecrets('HONEYGAIN_POT_PASSWORD="super-secret-pot-pass"'),
+    'HONEYGAIN_POT_PASSWORD="***"'
+  );
 });
 
 test('redactSecrets masque les sessions résidentielles', () => {

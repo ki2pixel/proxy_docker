@@ -25,18 +25,19 @@ Langue du projet : **français** — code, commentaires, messages de log et docs
 ## Architecture
 
 ```
-docker-compose.yml        # 4 passerelles × 5 providers, dashboard, caddy (profil tls)
+docker-compose.yml        # 4 passerelles × 5 providers, dashboard, caddy (profil tls), honeygain-pot (profil pot)
 gateway-isp/              # entrypoint.sh (TUN + routage + DoH + watchdog), healthcheck.sh, Dockerfile
 controller/               # Dashboard Express.js + orchestration Docker (index.js, lib.js, public/)
 scripts/                  # start.sh, lib.sh (bibliothèque partagée), outils ops
 scripts/proxiware_relay.py # Relais SOCKS5 (déployé sur Azure) : chaînage vers les proxys Proxiware — contourne le blocage port 1337 de Tierhive
 docs/                     # Documentation technique approfondie (Azure, multi-passerelles, routage)
 docs/Antgain/             # Guide du provider Antgain (image officielle pinors/antgain-cli)
+docs/Honeygain/           # Guides Honeygain et Lucky Pot (honeygain-pot)
 ```
 
 ### Principe central
 
-**`network_mode: service:gateway-isp-{n}`** — chaque pool de providers partage le namespace réseau de SA passerelle. La passerelle crée un `tun0` (198.18.0.1/15), une table de routage dédiée (`0x22b`), un résolveur DoH local (`dnsproxy`, 127.0.0.1:53) et un `tun2socks` vers le proxy amont. Aucun port publié sur l'hôte pour les passerelles : le kill-switch L3 garantit qu'aucun trafic ne fuit sur l'IP de la VM si le proxy tombe.
+**`network_mode: service:gateway-isp-{n}`** — chaque pool de providers partage le namespace réseau de SA passerelle. La passerelle crée un `tun0` (198.18.0.1/15), une table de routage dédiée (`0x22b`), un résolveur DoH local (`dnsproxy`, 127.0.0.1:53) et un `tun2socks` vers le proxy amont. Aucun port publié sur l'hôte pour les passerelles : le kill-switch L3 garantit qu'aucun trafic ne fuit sur l'IP de la VM si le proxy tombe. Les services utilitaires autonomes (ex. `honeygain-pot`, `caddy`) tournent hors des passerelles.
 
 ### Passerelles (`gateway-isp/`)
 
@@ -56,9 +57,10 @@ Express.js (ESM, `"type": "module"`) sans framework frontend : `public/app.js` +
   - `GET /api/logs/container/:name` · `GET /api/logs/stream` (SSE)
 - Le dashboard monte le socket Docker et le `.env` de l'hôte (`/var/run/docker.sock`, `./docker-compose.yml`, `./.env`).
 
-### Providers (`docker-compose.yml`)
+### Providers & Utilitaires (`docker-compose.yml`)
 
-Profils compose **combinés** `gw{n}-{type}` (ex. `gw1-antgain`) + profil passerelle `gw{n}`. Types : `antgain`, `honeygain`, `packetstream`, `pawns`, `repocket` (images officielles), ou `none`. Variable `COMPOSE_PROFILES="all|none|liste"`.
+- **Providers de monétisation** : profils compose **combinés** `gw{n}-{type}` (ex. `gw1-antgain`) + profil passerelle `gw{n}`. Types : `antgain`, `honeygain`, `packetstream`, `pawns`, `repocket` (images officielles), ou `none`.
+- **Utilitaires autonomes** : `honeygain-pot` (profils `honeygain-pot` / `pot`, réclame le Lucky Pot Honeygain quotidien), `caddy` (profil `tls`). Variable `COMPOSE_PROFILES="all|none|liste"` (ex. `repocket,honeygain-pot`).
 
 ### .env
 

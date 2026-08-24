@@ -523,6 +523,27 @@ services:
     logging: *default-logging
 
   # --------------------------------------------------------------------------
+  # Honeygain Pot (Lucky Pot Auto-Claim Bot — profil "honeygain-pot" ou "pot")
+  # Réclame automatiquement le pot quotidien Honeygain toutes les 24h.
+  # Service utilitaire autonome (non lié à une passerelle de monétisation ISP).
+  # --------------------------------------------------------------------------
+  honeygain-pot:
+    image: ghcr.io/xterna/honeygain-pot:latest
+    container_name: honeygain-pot
+    restart: unless-stopped
+    profiles: ["honeygain-pot", "pot"]
+    environment:
+      - EMAIL=${HONEYGAIN_POT_EMAIL:-${GW1_HONEYGAIN_EMAIL:-${HONEYGAIN_EMAIL:-}}}
+      - PASSWORD=${HONEYGAIN_POT_PASSWORD:-${GW1_HONEYGAIN_PASSWORD:-${HONEYGAIN_PASSWORD:-}}}
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    mem_limit: 64m
+    cpus: 0.1
+    pids_limit: 32
+    logging: *default-logging
+
+  # --------------------------------------------------------------------------
   # Caddy : Reverse Proxy TLS optionnel (profil "tls")
   # Activez avec : COMPOSE_PROFILES="tls" + DASHBOARD_DOMAIN défini
   # --------------------------------------------------------------------------
@@ -550,3 +571,4 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+

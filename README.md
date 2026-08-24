@@ -53,13 +53,14 @@ graph TD
 
 ## 2. Fournisseurs de Monétisation Supportés
 
-| Fournisseur | Image Docker | Variables Clés (`.env`, par passerelle) | Tableau de Bord | Comportement & Validation en Production |
+| Fournisseur / Utilitaire | Image Docker | Variables Clés (`.env`, par passerelle ou global) | Tableau de Bord | Comportement & Validation en Production |
 | :--- | :--- | :--- | :--- | :--- |
 | **Pawns.app** | `iproyal/pawns-cli:latest` | `GW{n}_PAWNS_EMAIL`, `GW{n}_PAWNS_PASSWORD`, `GW{n}_PAWNS_DEVICE_NAME` | [pawns.app](https://pawns.app) | 🟢 **Actif** sur 3/4 IP (tarif plein $0.20/GB) ; la 4e IP était en attente de validation plateforme. |
 | **Repocket** | `repocket/repocket:latest` | `GW{n}_REPOCKET_EMAIL`, `GW{n}_REPOCKET_API_KEY` | [repocket.com](https://repocket.com) | 🟢 **100% Actif** (4 pairs connectés, 4 IP distinctes, échange de paquets validé). |
 | **PacketStream** | `packetstream/psclient:latest` | `GW{n}_PACKETSTREAM_CID` | [packetstream.io](https://packetstream.io) | 🟢 **100% Opérationnel** (tunnels actifs sur les 4 passerelles, trafic comptabilisé). |
 | **Honeygain** | `honeygain/honeygain:latest` | `GW{n}_HONEYGAIN_EMAIL`, `GW{n}_HONEYGAIN_PASSWORD`, `GW{n}_HONEYGAIN_DEVICE_NAME` | [dashboard.honeygain.com](https://dashboard.honeygain.com) | 🟢 **Connecté** (4 devices actifs ; conflit de nom temporaire après redémarrage, voir pièges connus). |
 | **Antgain** | `pinors/antgain-cli:latest` | `ANTGAIN_API_KEY` *(global, partagé)*, `GW{n}_ANTGAIN_DEVICE_ID` *(UUID v4 unique et stable)* | [antgain.app](https://antgain.app) | 🟢 **Actif** (client officiel multi-arch ; identité liée à un UUID stable par passerelle). |
+| **Honeygain Pot** *(utilitaire)* | `ghcr.io/xterna/honeygain-pot:latest` | `HONEYGAIN_POT_EMAIL`, `HONEYGAIN_POT_PASSWORD` *(ou fallback GW1)* | [dashboard.honeygain.com](https://dashboard.honeygain.com) | 🟢 **Autonome** (profil `honeygain-pot` ou `pot` ; réclame automatiquement le Lucky Pot quotidien). |
 
 ---
 

@@ -36,28 +36,45 @@ get_gateway_env_prefix() {
 # -----------------------------------------------------------------------------
 # compose_profiles_args : construit les arguments --profile pour docker compose
 #   à partir d'ENABLED_GATEWAYS (gw{n}) et de COMPOSE_PROFILES (types).
-#   Avec le nouveau schéma de profils combinés gw{n}-{type}, on active :
+#   Avec le schéma de profils combinés gw{n}-{type}, on active :
 #     - les profils gw{n} (passerelles)
 #     - les profils combinés gw{n}-{type} pour chaque passerelle active × type
+#     - les profils autonomes (ex: honeygain-pot, tls) passés tels quels
 #   ATTENTION : il faut TOUJOURS passer au moins --profile gw{n} pour une
 #   passerelle — sinon ses providers n'ont pas de réseau (fail-closed).
 # -----------------------------------------------------------------------------
 compose_profiles_args() {
-    local gws types t g args=""
+    local gws raw_types types t g args="" expanded_types=""
     gws=$(get_enabled_gateways)
-    # COMPOSE_PROFILES peut être "all" | "none" | liste séparée par virgules
-    types=$(get_env COMPOSE_PROFILES "none" | tr ',' ' ' | tr -s ' ')
-    # "all" = tous les types ; "none" = aucun provider
-    if [ "$types" = "all" ]; then
-        types="antgain honeygain packetstream pawns repocket"
-    elif [ "$types" = "none" ]; then
-        types=""
-    fi
+    # COMPOSE_PROFILES peut être "all" | "none" | liste séparée par virgules (ex: all,honeygain-pot)
+    raw_types=$(get_env COMPOSE_PROFILES "none" | tr ',' ' ' | tr -s ' ')
+    for t in $raw_types; do
+        if [ "$t" = "all" ]; then
+            expanded_types="$expanded_types antgain honeygain packetstream pawns repocket"
+        elif [ "$t" != "none" ]; then
+            expanded_types="$expanded_types $t"
+        fi
+    done
+    types=$(echo "$expanded_types" | tr -s ' ' | sed 's/^ //;s/ $//')
     for g in $gws; do
         args="$args --profile gw${g}"
         for t in $types; do
-            args="$args --profile gw${g}-${t}"
+            case "$t" in
+                antgain|honeygain|packetstream|pawns|repocket)
+                    args="$args --profile gw${g}-${t}"
+                    ;;
+            esac
         done
+    done
+    # Profils autonomes / standalone (ex. honeygain-pot, pot, tls)
+    for t in $types; do
+        case "$t" in
+            antgain|honeygain|packetstream|pawns|repocket)
+                ;;
+            *)
+                args="$args --profile ${t}"
+                ;;
+        esac
     done
     echo "$args"
 }

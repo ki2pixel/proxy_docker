@@ -11,6 +11,7 @@ import {
 test('les clés de mot de passe/API sont sensibles', () => {
   assert.ok(isSensitiveKey('ISP_PROXY_PASS'));
   assert.ok(isSensitiveKey('HONEYGAIN_PASSWORD'));
+  assert.ok(isSensitiveKey('HONEYGAIN_POT_PASSWORD'));
   assert.ok(isSensitiveKey('PAWNS_PASSWORD'));
   assert.ok(isSensitiveKey('REPOCKET_API_KEY'));
   assert.ok(isSensitiveKey('ANTGAIN_API_KEY'));
@@ -36,6 +37,8 @@ test('le schéma CONFIG_KEYS couvre les 4 passerelles et le global', () => {
   assert.ok(isKnownConfigKey('ENABLED_GATEWAYS'));
   assert.ok(isKnownConfigKey('GATEWAY_LOGLEVEL'));
   assert.ok(isKnownConfigKey('ANTGAIN_API_KEY'));
+  assert.ok(isKnownConfigKey('HONEYGAIN_POT_EMAIL'));
+  assert.ok(isKnownConfigKey('HONEYGAIN_POT_PASSWORD'));
   // Légacy conservé pour la migration
   assert.ok(isKnownConfigKey('ISP_PROXY_HOST'));
   assert.ok(isKnownConfigKey('PAWNS_EMAIL'));
