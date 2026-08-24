@@ -708,19 +708,28 @@ async function fetchCurrentGatewayIP(gw) {
         asn: (data.as || data.org || '').split(' ')[0] || ''
       };
       gstate.latencyMs = latency;
-      gstate.status = 'HEALTHY';
       gstate.consecutiveFailures = 0;
     } else {
+      // La détection d'IP est purement informative : certains proxys ISP
+      // bloquent tous les services de géolocalisation (ipinfo/ipify/...).
+      // On ne dégrade PAS le statut du gateway pour autant — la santé réelle
+      // vient du healthcheck Docker (processus tun2socks/dnsproxy/TUN).
       gstate.consecutiveFailures += 1;
       if (gstate.consecutiveFailures >= 3) {
-        gstate.status = 'UNHEALTHY';
+        gstate.currentIP = null;
+        gstate.currentLocation = null;
+        gstate.ispInfo = null;
+        gstate.latencyMs = null;
       }
     }
   } catch (err) {
     log(`Health check error (${gw.id}): ${err.message}`, 'ERROR');
     gstate.consecutiveFailures += 1;
     if (gstate.consecutiveFailures >= 3) {
-      gstate.status = 'UNHEALTHY';
+      gstate.currentIP = null;
+      gstate.currentLocation = null;
+      gstate.ispInfo = null;
+      gstate.latencyMs = null;
     }
   } finally {
     gstate.ipFetchInFlight = false;
@@ -744,9 +753,11 @@ async function buildStatusSnapshot() {
 
   const containers = await docker.listContainers();
   const nameSet = new Set((containers || []).flatMap(c => c.Names || []));
+  const gwContainers = new Map((containers || []).map(c => [c.Names?.[0]?.replace(/^\//, ''), c]));
 
   const gateways = activeGateways.map(gw => {
     const gstate = GATEWAY_STATES.get(gw.id);
+    const gwContainer = gwContainers.get(gw.container);
     const providers = gw.providers.map(p => {
       const matched = nameSet.has(`/${p.container}`);
       const container = (containers || []).find(c => (c.Names || []).includes(`/${p.container}`));
@@ -758,6 +769,15 @@ async function buildStatusSnapshot() {
         containerId: matched && container ? container.Id : null
       };
     });
+
+    // Statut de santé : le healthcheck Docker (processus tun2socks/dnsproxy/TUN)
+    // est la source de vérité. La détection d'IP (fetchCurrentGatewayIP) reste
+    // informative — certains proxys ISP bloquent les services de géolocalisation.
+    const dockerHealthy = gwContainer
+      ? gwContainer.State === 'running' && /\(healthy\)/.test(gwContainer.Status || '')
+      : false;
+    const gatewayStatus = dockerHealthy ? 'HEALTHY' : (gwContainer ? 'UNHEALTHY' : gstate.status);
+
     return {
       id: gw.id,
       num: gw.num,
@@ -766,7 +786,7 @@ async function buildStatusSnapshot() {
       location: gstate.currentLocation,
       isp: gstate.ispInfo,
       latencyMs: gstate.latencyMs,
-      status: gstate.status,
+      status: gatewayStatus,
       activeProxy: gstate.activeProxy,
       providers
     };
