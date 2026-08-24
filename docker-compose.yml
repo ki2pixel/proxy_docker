@@ -167,7 +167,7 @@ services:
     depends_on:
       gateway-isp-1:
         condition: service_healthy
-    command: ["-email=${GW1_PAWNS_EMAIL:-${PAWNS_EMAIL:-}}", "-password=${GW1_PAWNS_PASSWORD:-${PAWNS_PASSWORD:-}}", "-device-name=${GW1_PAWNS_DEVICE_NAME:-${PAWNS_DEVICE_NAME:-Docker-ISP-1-Pawns}}", "-accept-tos"]
+    command: ["-email=${GW1_PAWNS_EMAIL:-${PAWNS_EMAIL:-}}", "-password=${GW1_PAWNS_PASSWORD:-${PAWNS_PASSWORD:-}}", "-device-name=${GW1_PAWNS_DEVICE_NAME:-${PAWNS_DEVICE_NAME:-Docker-ISP-1-Pawns}}", "-device-id=${GW1_PAWNS_DEVICE_ID:-${GW1_PAWNS_DEVICE_NAME:-Docker-ISP-1-Pawns}}", "-accept-tos"]
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64
@@ -282,7 +282,7 @@ services:
     depends_on:
       gateway-isp-2:
         condition: service_healthy
-    command: ["-email=${GW2_PAWNS_EMAIL:-}", "-password=${GW2_PAWNS_PASSWORD:-}", "-device-name=${GW2_PAWNS_DEVICE_NAME:-Docker-ISP-2-Pawns}", "-accept-tos"]
+    command: ["-email=${GW2_PAWNS_EMAIL:-}", "-password=${GW2_PAWNS_PASSWORD:-}", "-device-name=${GW2_PAWNS_DEVICE_NAME:-Docker-ISP-2-Pawns}", "-device-id=${GW2_PAWNS_DEVICE_ID:-${GW2_PAWNS_DEVICE_NAME:-Docker-ISP-2-Pawns}}", "-accept-tos"]
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64
@@ -397,7 +397,7 @@ services:
     depends_on:
       gateway-isp-3:
         condition: service_healthy
-    command: ["-email=${GW3_PAWNS_EMAIL:-}", "-password=${GW3_PAWNS_PASSWORD:-}", "-device-name=${GW3_PAWNS_DEVICE_NAME:-Docker-ISP-3-Pawns}", "-accept-tos"]
+    command: ["-email=${GW3_PAWNS_EMAIL:-}", "-password=${GW3_PAWNS_PASSWORD:-}", "-device-name=${GW3_PAWNS_DEVICE_NAME:-Docker-ISP-3-Pawns}", "-device-id=${GW3_PAWNS_DEVICE_ID:-${GW3_PAWNS_DEVICE_NAME:-Docker-ISP-3-Pawns}}", "-accept-tos"]
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64
@@ -512,7 +512,7 @@ services:
     depends_on:
       gateway-isp-4:
         condition: service_healthy
-    command: ["-email=${GW4_PAWNS_EMAIL:-}", "-password=${GW4_PAWNS_PASSWORD:-}", "-device-name=${GW4_PAWNS_DEVICE_NAME:-Docker-ISP-4-Pawns}", "-accept-tos"]
+    command: ["-email=${GW4_PAWNS_EMAIL:-}", "-password=${GW4_PAWNS_PASSWORD:-}", "-device-name=${GW4_PAWNS_DEVICE_NAME:-Docker-ISP-4-Pawns}", "-device-id=${GW4_PAWNS_DEVICE_ID:-${GW4_PAWNS_DEVICE_NAME:-Docker-ISP-4-Pawns}}", "-accept-tos"]
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64
