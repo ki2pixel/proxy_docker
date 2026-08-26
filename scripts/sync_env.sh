@@ -94,8 +94,8 @@ if [ ! -f "$KNOWN_HOSTS" ]; then
     exit 1
 fi
 
-SSH_OPTS=(-i "$KEY_PATH" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes)
-SCP_OPTS=(-i "$KEY_PATH" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes)
+SSH_OPTS=(-i "$KEY_PATH" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
+SCP_OPTS=(-i "$KEY_PATH" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
 if [ -n "${SSH_PORT:-}" ]; then
     SSH_OPTS+=(-p "$SSH_PORT")
     SCP_OPTS+=(-P "$SSH_PORT") # scp utilise -P (majuscule) pour le port

@@ -36,11 +36,15 @@ test('le schéma CONFIG_KEYS couvre les 4 passerelles et le global', () => {
     assert.ok(isKnownConfigKey(`GW${n}_REPOCKET_API_KEY`), `GW${n}_REPOCKET_API_KEY manquante`);
     assert.ok(isKnownConfigKey(`GW${n}_WIPTER_EMAIL`), `GW${n}_WIPTER_EMAIL manquante`);
     assert.ok(isKnownConfigKey(`GW${n}_WIPTER_PASSWORD`), `GW${n}_WIPTER_PASSWORD manquante`);
+    assert.ok(isKnownConfigKey(`GW${n}_WIPTER_DISCORD_WEBHOOK`), `GW${n}_WIPTER_DISCORD_WEBHOOK manquante`);
+    assert.ok(isKnownConfigKey(`GW${n}_WIPTER_DISCORD_INTERVAL`), `GW${n}_WIPTER_DISCORD_INTERVAL manquante`);
   }
   assert.ok(isKnownConfigKey('ENABLED_GATEWAYS'));
   assert.ok(isKnownConfigKey('GATEWAY_LOGLEVEL'));
   assert.ok(isKnownConfigKey('WIPTER_EMAIL'));
   assert.ok(isKnownConfigKey('WIPTER_PASSWORD'));
+  assert.ok(isKnownConfigKey('WIPTER_DISCORD_WEBHOOK'));
+  assert.ok(isKnownConfigKey('WIPTER_DISCORD_INTERVAL'));
   assert.ok(isKnownConfigKey('HONEYGAIN_POT_EMAIL'));
   assert.ok(isKnownConfigKey('HONEYGAIN_POT_PASSWORD'));
   // Légacy conservé pour la migration

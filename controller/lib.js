@@ -344,6 +344,8 @@ const GLOBAL_KEYS = [
   { key: 'GATEWAY_LOGLEVEL', category: 'global', label: 'Niveau de log gateway', options: ['warning', 'info', 'debug'] },
   { key: 'WIPTER_EMAIL', category: 'global', label: 'Wipter — email (partagé)' },
   { key: 'WIPTER_PASSWORD', category: 'global', label: 'Wipter — mot de passe (partagé)' },
+  { key: 'WIPTER_DISCORD_WEBHOOK', category: 'global', label: 'Wipter — Discord Webhook URL (optionnel)' },
+  { key: 'WIPTER_DISCORD_INTERVAL', category: 'global', label: 'Wipter — Discord Intervalle en secondes (optionnel)' },
   { key: 'HONEYGAIN_POT_EMAIL', category: 'global', label: 'Honeygain Pot — email (optionnel)' },
   { key: 'HONEYGAIN_POT_PASSWORD', category: 'global', label: 'Honeygain Pot — mot de passe (optionnel)' }
 ];
@@ -358,6 +360,8 @@ const GATEWAY_KEYS = (n) => [
   { key: `GW${n}_HOSTNAME`, category: `gw${n}`, label: 'Nom d\'hôte système (ex: DESKTOP-XXXX)' },
   { key: `GW${n}_WIPTER_EMAIL`, category: `gw${n}`, label: 'Wipter — email' },
   { key: `GW${n}_WIPTER_PASSWORD`, category: `gw${n}`, label: 'Wipter — mot de passe' },
+  { key: `GW${n}_WIPTER_DISCORD_WEBHOOK`, category: `gw${n}`, label: 'Wipter — Discord Webhook URL' },
+  { key: `GW${n}_WIPTER_DISCORD_INTERVAL`, category: `gw${n}`, label: 'Wipter — Discord Intervalle (s)' },
   { key: `GW${n}_HONEYGAIN_EMAIL`, category: `gw${n}`, label: 'Honeygain — email' },
   { key: `GW${n}_HONEYGAIN_PASSWORD`, category: `gw${n}`, label: 'Honeygain — mot de passe' },
   { key: `GW${n}_HONEYGAIN_DEVICE_NAME`, category: `gw${n}`, label: 'Honeygain — device' },
