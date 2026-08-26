@@ -57,22 +57,12 @@ jobs:
             echo "🔍 [Deploy] Validation de la configuration compose..."
             docker compose config --quiet
 
-            echo "🐳 [Deploy] Reconstruction et redémarrage (sans down destructeur)..."
             # Active les profils gw{n} d'après ENABLED_GATEWAYS et les types d'après COMPOSE_PROFILES
-            GATEWAYS=$(grep -E '^ENABLED_GATEWAYS=' .env | cut -d= -f2 | tr ',' ' ' | tr -d '"' || echo "1")
-            COMPOSE_PROFILES_VAL=$(grep -E '^COMPOSE_PROFILES=' .env | cut -d= -f2 | tr -d '"' | tr ',' ' ' || echo "none")
-            if [ "$COMPOSE_PROFILES_VAL" = "all" ]; then
-              COMPOSE_PROFILES_VAL="wipter honeygain packetstream pawns repocket"
-            elif [ "$COMPOSE_PROFILES_VAL" = "none" ]; then
-              COMPOSE_PROFILES_VAL=""
-            fi
-            PROFILE_ARGS=""
-            for g in $GATEWAYS; do
-              PROFILE_ARGS="$PROFILE_ARGS --profile gw${g}"
-              for t in $COMPOSE_PROFILES_VAL; do
-                PROFILE_ARGS="$PROFILE_ARGS --profile gw${g}-${t}"
-              done
-            done
+            # (gestion robuste de 'all', des listes séparées par virgules et des utilitaires comme honeygain-pot)
+            # shellcheck source=scripts/lib.sh
+            source scripts/lib.sh
+            PROFILE_ARGS=$(compose_profiles_args)
+            echo "Profils compose : $PROFILE_ARGS"
             # shellcheck disable=SC2086
             # --force-recreate : indispensable pour les providers en
             # network_mode: service:gateway-isp-{n} — si une passerelle est

@@ -146,14 +146,10 @@ fi
 
 # Lancement des conteneurs (mode historique) — voir --push-only plus haut
 ssh "${SSH_OPTS[@]}" "${SSH_USER}@${SERVER_IP}" "cd ${REMOTE_DIR} && \
-  GWS=\$(grep -E '^ENABLED_GATEWAYS=' .env | cut -d= -f2 | tr ',' ' ' | tr -d '\"' | tr -s ' ') ; \
-  [ -z \"\$GWS\" ] && GWS=1 ; \
-  TYPES=\$(grep -E '^COMPOSE_PROFILES=' .env | cut -d= -f2 | tr -d '\"' | tr ',' ' ' | tr -s ' ') ; \
-  if [ \"\$TYPES\" = \"all\" ]; then TYPES='wipter honeygain packetstream pawns repocket'; elif [ \"\$TYPES\" = \"none\" ]; then TYPES=''; fi ; \
-  ARGS='' ; \
-  for g in \$GWS; do ARGS=\"\$ARGS --profile gw\${g}\"; for t in \$TYPES; do ARGS=\"\$ARGS --profile gw\${g}-\${t}\"; done; done ; \
-  echo \"Profils compose :\$ARGS\" ; \
-  docker compose \$ARGS up -d"
+  source scripts/lib.sh && \
+  ARGS=\$(compose_profiles_args) && \
+  echo \"Profils compose : \$ARGS\" && \
+  docker compose \$ARGS up -d --remove-orphans"
 
 # 3. Vérification de l'état des conteneurs après redémarrage
 echo "[3/3] Vérification de l'état des conteneurs..."

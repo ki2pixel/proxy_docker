@@ -191,3 +191,6 @@ log() {
     local level="${2:-INFO}"
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$level] $msg"
 }
+
+# Charge automatiquement le .env s'il existe (sans écraser les variables déjà exportées)
+load_env "$PROJECT_ROOT/.env" 2>/dev/null || true
