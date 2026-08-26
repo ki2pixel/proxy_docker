@@ -124,6 +124,8 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - DAC_OVERRIDE # Requis pour l'écriture initiale de /etc/machine-id et dbus
     shm_size: '256m'
     environment:
       - WIPTER_EMAIL=${GW1_WIPTER_EMAIL:-${WIPTER_EMAIL:-}}
@@ -262,6 +264,8 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - DAC_OVERRIDE
     shm_size: '256m'
     environment:
       - WIPTER_EMAIL=${GW2_WIPTER_EMAIL:-${WIPTER_EMAIL:-}}
@@ -400,6 +404,8 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - DAC_OVERRIDE
     shm_size: '256m'
     environment:
       - WIPTER_EMAIL=${GW3_WIPTER_EMAIL:-${WIPTER_EMAIL:-}}
@@ -538,6 +544,8 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - DAC_OVERRIDE
     shm_size: '256m'
     environment:
       - WIPTER_EMAIL=${GW4_WIPTER_EMAIL:-${WIPTER_EMAIL:-}}
