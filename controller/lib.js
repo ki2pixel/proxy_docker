@@ -10,7 +10,7 @@ export const GATEWAY_NUMS = [1, 2, 3, 4];
 // Clés considérées comme secrètes (redaction dans les logs)
 const BASE_SECRET_KEYS = [
   'ISP_PROXY_PASS', 'HONEYGAIN_PASSWORD', 'PAWNS_PASSWORD',
-  'PACKETSTREAM_CID', 'REPOCKET_API_KEY', 'ANTGAIN_API_KEY',
+  'PACKETSTREAM_CID', 'REPOCKET_API_KEY', 'WIPTER_PASSWORD',
   'HONEYGAIN_POT_PASSWORD',
   'DASHBOARD_TOKEN', 'DASHBOARD_SECRET'
 ];
@@ -339,10 +339,11 @@ const SENSITIVE_KEY_RE = /^(GW\d+_)?(ISP_PROXY_PASS|.*_PASSWORD|.*_API_KEY)$/;
 // Meta des clés globales (dashboard + gateway commun)
 const GLOBAL_KEYS = [
   { key: 'DASHBOARD_PORT', category: 'global', label: 'Port du dashboard' },
-  { key: 'COMPOSE_PROFILES', category: 'global', label: 'Profils actifs', options: ['none', 'repocket', 'honeygain', 'packetstream', 'pawns', 'antgain', 'all', 'honeygain-pot'] },
+  { key: 'COMPOSE_PROFILES', category: 'global', label: 'Profils actifs', options: ['none', 'repocket', 'honeygain', 'packetstream', 'pawns', 'wipter', 'all', 'honeygain-pot'] },
   { key: 'ENABLED_GATEWAYS', category: 'global', label: 'Passerelles actives (ex. 1,2,3,4)' },
   { key: 'GATEWAY_LOGLEVEL', category: 'global', label: 'Niveau de log gateway', options: ['warning', 'info', 'debug'] },
-  { key: 'ANTGAIN_API_KEY', category: 'global', label: 'Antgain — clé API (partagée)' },
+  { key: 'WIPTER_EMAIL', category: 'global', label: 'Wipter — email (partagé)' },
+  { key: 'WIPTER_PASSWORD', category: 'global', label: 'Wipter — mot de passe (partagé)' },
   { key: 'HONEYGAIN_POT_EMAIL', category: 'global', label: 'Honeygain Pot — email (optionnel)' },
   { key: 'HONEYGAIN_POT_PASSWORD', category: 'global', label: 'Honeygain Pot — mot de passe (optionnel)' }
 ];
@@ -354,7 +355,9 @@ const GATEWAY_KEYS = (n) => [
   { key: `GW${n}_ISP_PROXY_PORT`, category: `gw${n}`, label: 'Port du proxy' },
   { key: `GW${n}_ISP_PROXY_USER`, category: `gw${n}`, label: 'Utilisateur du proxy' },
   { key: `GW${n}_ISP_PROXY_PASS`, category: `gw${n}`, label: 'Mot de passe du proxy' },
-  { key: `GW${n}_ANTGAIN_DEVICE_ID`, category: `gw${n}`, label: 'Antgain — UUID device (stable)' },
+  { key: `GW${n}_HOSTNAME`, category: `gw${n}`, label: 'Nom d\'hôte système (ex: DESKTOP-XXXX)' },
+  { key: `GW${n}_WIPTER_EMAIL`, category: `gw${n}`, label: 'Wipter — email' },
+  { key: `GW${n}_WIPTER_PASSWORD`, category: `gw${n}`, label: 'Wipter — mot de passe' },
   { key: `GW${n}_HONEYGAIN_EMAIL`, category: `gw${n}`, label: 'Honeygain — email' },
   { key: `GW${n}_HONEYGAIN_PASSWORD`, category: `gw${n}`, label: 'Honeygain — mot de passe' },
   { key: `GW${n}_HONEYGAIN_DEVICE_NAME`, category: `gw${n}`, label: 'Honeygain — device' },
@@ -373,6 +376,8 @@ const LEGACY_KEYS = [
   { key: 'ISP_PROXY_PORT', category: 'legacy', label: 'Port du proxy (legacy)' },
   { key: 'ISP_PROXY_USER', category: 'legacy', label: 'Utilisateur du proxy (legacy)' },
   { key: 'ISP_PROXY_PASS', category: 'legacy', label: 'Mot de passe du proxy (legacy)' },
+  { key: 'HOSTNAME', category: 'legacy', label: 'Nom d\'hôte système (legacy)' },
+  { key: 'ANTGAIN_API_KEY', category: 'legacy', label: 'Antgain — clé API (legacy)' },
   { key: 'ANTGAIN_DEVICE_ID', category: 'legacy', label: 'Antgain — UUID device (legacy)' },
   { key: 'HONEYGAIN_EMAIL', category: 'legacy', label: 'Honeygain — email (legacy)' },
   { key: 'HONEYGAIN_PASSWORD', category: 'legacy', label: 'Honeygain — mot de passe (legacy)' },

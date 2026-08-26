@@ -20,7 +20,7 @@ jobs:
           # Le runner n'a pas le .env : fournir des valeurs de validation
           # (le déploiement réel sur la VM utilisera le vrai .env)
           DASHBOARD_TOKEN=validation_token_32chars_minimum DASHBOARD_SECRET=validation_secret_32chars_minimum \
-          docker compose --profile gw1 --profile gw1-pawns --profile gw1-honeygain --profile gw1-repocket --profile gw1-packetstream --profile gw1-antgain config --quiet
+          docker compose --profile gw1 --profile gw1-pawns --profile gw1-honeygain --profile gw1-repocket --profile gw1-packetstream --profile gw1-wipter config --quiet
 
       - name: Deploy via SSH to Azure
         uses: appleboy/ssh-action@v1.0.3
@@ -62,7 +62,7 @@ jobs:
             GATEWAYS=$(grep -E '^ENABLED_GATEWAYS=' .env | cut -d= -f2 | tr ',' ' ' | tr -d '"' || echo "1")
             COMPOSE_PROFILES_VAL=$(grep -E '^COMPOSE_PROFILES=' .env | cut -d= -f2 | tr -d '"' | tr ',' ' ' || echo "none")
             if [ "$COMPOSE_PROFILES_VAL" = "all" ]; then
-              COMPOSE_PROFILES_VAL="antgain honeygain packetstream pawns repocket"
+              COMPOSE_PROFILES_VAL="wipter honeygain packetstream pawns repocket"
             elif [ "$COMPOSE_PROFILES_VAL" = "none" ]; then
               COMPOSE_PROFILES_VAL=""
             fi

@@ -4,7 +4,7 @@ Mémoire projet pour les agents de code. Ce fichier décrit les conventions, l'a
 
 ## Vue d'ensemble
 
-Système Docker de monétisation de bande passante : jusqu'à **4 passerelles ISP** (`gateway-isp-1..4`), chacune avec son propre namespace réseau et jusqu'à **5 providers** de monétisation (Antgain, Honeygain, PacketStream, Pawns.app, Repocket), pilotées par un **dashboard Express** (`controller/`) qui orchestre via le socket Docker.
+Système Docker de monétisation de bande passante : jusqu'à **4 passerelles ISP** (`gateway-isp-1..4`), chacune avec son propre namespace réseau et jusqu'à **5 providers** de monétisation (Wipter, Honeygain, PacketStream, Pawns.app, Repocket), pilotées par un **dashboard Express** (`controller/`) qui orchestre via le socket Docker.
 
 Langue du projet : **français** — code, commentaires, messages de log et docs (sauf identifiants/termes techniques anglais).
 
@@ -32,7 +32,7 @@ controller/               # Dashboard Express.js + orchestration Docker (index.j
 scripts/                  # start.sh, lib.sh (bibliothèque partagée), outils ops
 scripts/proxiware_relay.py # Relais SOCKS5 (déployé sur Azure) : chaînage vers les proxys Proxiware — contourne le blocage port 1337 de Tierhive
 docs/                     # Documentation technique approfondie (Azure, multi-passerelles, routage)
-docs/Antgain/             # Guide du provider Antgain (image officielle pinors/antgain-cli)
+docs/Wipter/              # Guide du provider Wipter (image techroy23/docker-wipter)
 docs/Honeygain/           # Guides Honeygain et Lucky Pot (honeygain-pot)
 ```
 
@@ -60,7 +60,7 @@ Express.js (ESM, `"type": "module"`) sans framework frontend : `public/app.js` +
 
 ### Providers & Utilitaires (`docker-compose.yml`)
 
-- **Providers de monétisation** : profils compose **combinés** `gw{n}-{type}` (ex. `gw1-antgain`) + profil passerelle `gw{n}`. Types : `antgain`, `honeygain`, `packetstream`, `pawns`, `repocket` (images officielles), ou `none`.
+- **Providers de monétisation** : profils compose **combinés** `gw{n}-{type}` (ex. `gw1-wipter`) + profil passerelle `gw{n}`. Types : `wipter`, `honeygain`, `packetstream`, `pawns`, `repocket` (images officielles / reconnues), ou `none`.
 - **Utilitaires autonomes** : `honeygain-pot` (profils `honeygain-pot` / `pot`, réclame le Lucky Pot Honeygain quotidien), `caddy` (profil `tls`). Variable `COMPOSE_PROFILES="all|none|liste"` (ex. `repocket,honeygain-pot`).
 
 ### .env
@@ -87,7 +87,7 @@ Express.js (ESM, `"type": "module"`) sans framework frontend : `public/app.js` +
 
 - **Tierhive bloque le port 1337 sortant** : les proxys statiques Proxiware écoutent tous sur 1337 (port fixe), donc une VM Tierhive ne peut jamais les joindre directement — timeout TCP tous ports vers les IPs Proxiware, ICMP OK, reste d'Internet OK. Symptôme identique sur plusieurs IPs sources/localisations → ce n'est PAS un problème d'IP source, de swap ou de config. **Solution** : relais SOCKS5 sur la VM Azure (`scripts/proxiware_relay.py`, services `proxiware-relay-{1..4}`, ports 10801–10804 en TCP+UDP avec SOCKS5 UDP ASSOCIATE pour QUIC et `SO_KEEPALIVE`) ; les gateways Tierhive pointent vers `68.210.184.174:1080{n}` via `.env2` (USER/PASS vides). Voir README « Relais SOCKS5 Azure → Proxiware ».
 - **Frontend périmé** : les assets sont hashés (`app.<hash>.js`, `max-age=1y, immutable`) — un redéploiement change le hash. Si un navigateur affiche encore une vieille UI en navigation privée, c'est qu'un **ancien conteneur ou tunnel local** squatte le port 8088 et shadow la VM — vérifier `docker ps` / `ss -tlnp | grep 8088`, arrêter la stack locale, pas blâmer le cache d'abord.
-- **Antgain** : une clé API globale partagée (`ANTGAIN_API_KEY`, Settings sur https://antgain.app/dashboard/settings) + un UUID de device unique et stable par passerelle (`GW{n}_ANTGAIN_DEVICE_ID`). L'image officielle `pinors/antgain-cli:latest` est utilisée directement sans wrapper. L'UUID doit rester fixe lors des recréations de conteneurs.
+- **Wipter** : identifiants `WIPTER_EMAIL` et `WIPTER_PASSWORD` (globaux ou par passerelle `GW{n}_WIPTER_*`). L'image `techroy23/docker-wipter:latest` utilise une couche headless (Xvfb/Openbox/keyring) pour lancer le client desktop Electron et son tunnel rathole. VNC est désactivé par défaut.
 - **Honeygain** : après un redémarrage, `Device with this name is already active` temporaire — auto-résorbable en quelques minutes.
 - **Validation IP plateformes** : Pawns/Honeygain peuvent rejeter une IP temporairement (`tcpip-forward denied` / `Network Unusable`) — délai plateforme, pas un bug de la stack.
 - **`network_mode: service:`** : les providers dépendent de `gateway-isp-{n}` sain (`condition: service_healthy`) — ne jamais activer un provider sans sa passerelle (fail-closed, voir `compose_profiles_args` dans `scripts/lib.sh`).

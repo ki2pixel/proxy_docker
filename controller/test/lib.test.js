@@ -23,8 +23,8 @@ test('redactSecrets masque les valeurs de clés secrètes', () => {
     'ISP_PROXY_PASS="***"'
   );
   assert.equal(
-    redactSecrets('ANTGAIN_API_KEY="jeton-antgain-1234567890"'),
-    'ANTGAIN_API_KEY="***"'
+    redactSecrets('WIPTER_PASSWORD="mon-mot-de-passe-wipter"'),
+    'WIPTER_PASSWORD="***"'
   );
   assert.equal(
     redactSecrets('HONEYGAIN_POT_PASSWORD="super-secret-pot-pass"'),

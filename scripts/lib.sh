@@ -50,7 +50,7 @@ compose_profiles_args() {
     raw_types=$(get_env COMPOSE_PROFILES "none" | tr ',' ' ' | tr -s ' ')
     for t in $raw_types; do
         if [ "$t" = "all" ]; then
-            expanded_types="$expanded_types antgain honeygain packetstream pawns repocket"
+            expanded_types="$expanded_types wipter honeygain packetstream pawns repocket"
         elif [ "$t" != "none" ]; then
             expanded_types="$expanded_types $t"
         fi
@@ -60,7 +60,7 @@ compose_profiles_args() {
         args="$args --profile gw${g}"
         for t in $types; do
             case "$t" in
-                antgain|honeygain|packetstream|pawns|repocket)
+                wipter|honeygain|packetstream|pawns|repocket)
                     args="$args --profile gw${g}-${t}"
                     ;;
             esac
@@ -69,7 +69,7 @@ compose_profiles_args() {
     # Profils autonomes / standalone (ex. honeygain-pot, pot, tls)
     for t in $types; do
         case "$t" in
-            antgain|honeygain|packetstream|pawns|repocket)
+            wipter|honeygain|packetstream|pawns|repocket)
                 ;;
             *)
                 args="$args --profile ${t}"

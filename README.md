@@ -1,6 +1,6 @@
 # Multi-Providers Monetization Hub & Multi-Gateways ISP sur Docker
 
-Système automatisé et sécurisé de monétisation de bande passante couplant **jusqu'à 4 passerelles réseau résidentielles / ISP dédiées** (`gateway-isp-1..4`) et **5 fournisseurs de monétisation par passerelle** (Antgain, Honeygain, PacketStream, Pawns.app, Repocket) au sein d'un environnement Docker isolé avec bascule à chaud, watchdog d'auto-guérison et tableau de bord Web.
+Système automatisé et sécurisé de monétisation de bande passante couplant **jusqu'à 4 passerelles réseau résidentielles / ISP dédiées** (`gateway-isp-1..4`) et **5 fournisseurs de monétisation par passerelle** (Wipter, Honeygain, PacketStream, Pawns.app, Repocket) au sein d'un environnement Docker isolé avec bascule à chaud, watchdog d'auto-guérison et tableau de bord Web.
 
 ---
 
@@ -14,12 +14,12 @@ graph TD
         subgraph GW1 ["Namespace Réseau : gateway-isp-1 (Proxy 1)"]
             TUN1["tun0<br>198.18.0.1/15"] --> T2S1["tun2socks"]
             DOH1["dnsproxy DoH<br>127.0.0.1:53"]
-            P1["pawns-1 · honeygain-1 · repocket-1 · packetstream-1 · antgain-1"]
+            P1["pawns-1 · honeygain-1 · repocket-1 · packetstream-1 · wipter-1"]
         end
         subgraph GW2 ["Namespace Réseau : gateway-isp-2 (Proxy 2)"]
             TUN2["tun0<br>198.18.0.1/15"] --> T2S2["tun2socks"]
             DOH2["dnsproxy DoH<br>127.0.0.1:53"]
-            P2["pawns-2 · honeygain-2 · repocket-2 · packetstream-2 · antgain-2"]
+            P2["pawns-2 · honeygain-2 · repocket-2 · packetstream-2 · wipter-2"]
         end
         subgraph GW4 ["... gateway-isp-3 · gateway-isp-4 (Proxies 3 & 4)"]
             P4["Même topologie, blocs GW3_/GW4_"]
@@ -59,7 +59,7 @@ graph TD
 | **Repocket** | `repocket/repocket:latest` | `GW{n}_REPOCKET_EMAIL`, `GW{n}_REPOCKET_API_KEY` | [repocket.com](https://repocket.com) | 🟢 **100% Actif** (4 pairs connectés, 4 IP distinctes, échange de paquets validé). |
 | **PacketStream** | `packetstream/psclient:latest` | `GW{n}_PACKETSTREAM_CID` | [packetstream.io](https://packetstream.io) | 🟢 **100% Opérationnel** (tunnels actifs sur les 4 passerelles, trafic comptabilisé). |
 | **Honeygain** | `honeygain/honeygain:latest` | `GW{n}_HONEYGAIN_EMAIL`, `GW{n}_HONEYGAIN_PASSWORD`, `GW{n}_HONEYGAIN_DEVICE_NAME` | [dashboard.honeygain.com](https://dashboard.honeygain.com) | 🟢 **Connecté** (4 devices actifs ; conflit de nom temporaire après redémarrage, voir pièges connus). |
-| **Antgain** | `pinors/antgain-cli:latest` | `ANTGAIN_API_KEY` *(global, partagé)*, `GW{n}_ANTGAIN_DEVICE_ID` *(UUID v4 unique et stable)* | [antgain.app](https://antgain.app) | 🟢 **Actif** (client officiel multi-arch ; identité liée à un UUID stable par passerelle). |
+| **Wipter** | `techroy23/docker-wipter:latest` | `WIPTER_EMAIL`, `WIPTER_PASSWORD`, `GW{n}_WIPTER_EMAIL`, `GW{n}_WIPTER_PASSWORD` | [wipter.com](https://wipter.com) | 🟢 **Actif** (client desktop headless avec simulation d'identité système ; VNC optionnel). |
 | **Honeygain Pot** *(utilitaire)* | `ghcr.io/xterna/honeygain-pot:latest` | `HONEYGAIN_POT_EMAIL`, `HONEYGAIN_POT_PASSWORD` *(ou fallback GW1)* | [dashboard.honeygain.com](https://dashboard.honeygain.com) | 🟢 **Autonome** (profil `honeygain-pot` ou `pot` ; réclame automatiquement le Lucky Pot quotidien). |
 
 ---
@@ -133,7 +133,7 @@ SSH_PORT=2755 ./scripts/sync_env.sh --push-only 147.135.16.160 docs/Tierhive/Pro
   * `relay-3` → port `10803` → `188.220.211.175:1337`
   * `relay-4` → port `10804` → `82.41.242.219:1337`
   * Config type : `ExecStart=/usr/bin/python3 /home/azureuser/proxiware_relay.py 10801 <USER_PROXIWARE> <PASS_PROXIWARE> 188.221.160.44 1337` (+ `Restart=always`)
-* **Ports** : ouvrir `10801-10804` en **TCP et UDP** dans **UFW** (`sudo ufw allow 10801:10804/tcp && sudo ufw allow 10801:10804/udp`) *et* dans le **NSG Azure** (les deux firewalls sont nécessaires — le trafic UDP est indispensable pour le protocole QUIC d'Antgain sur 8443, et TCP pour les flux HTTP/SSH/WebSockets de Repocket, Pawns, Honeygain).
+* **Ports** : ouvrir `10801-10804` en **TCP et UDP** dans **UFW** (`sudo ufw allow 10801:10804/tcp && sudo ufw allow 10801:10804/udp`) *et* dans le **NSG Azure** (les deux firewalls sont nécessaires — le trafic UDP est indispensable pour QUIC/UDP, et TCP pour les flux HTTP/SSH/WebSockets de Repocket, Pawns, Honeygain, Wipter).
 * **Côté Tierhive** : dans `.env2`, chaque `GW{n}_ISP_PROXY_HOST` = `68.210.184.174`, `GW{n}_ISP_PROXY_PORT` = `1080{n}`, `GW{n}_ISP_PROXY_USER`/`PASS` = vides (le relais gère l'auth Proxiware en interne). Le gateway parle alors au relais sans authentification.
 * **Réseau du gateway** : la bypass rule (`ip rule pref 1004`) du proxy host `68.210.184.174` est posée automatiquement par l'entrypoint — le trafic vers Azure ne passe pas par le tunnel.
 
@@ -194,7 +194,7 @@ Le dashboard intègre une section **« Performance de la VM »** qui affiche en 
 ### 🧠 Pièges connus & bonnes pratiques (retour d'expérience production)
 
 * **Honeygain — conflit de noms après redémarrage** : si un conteneur Honeygain redémarre (CI, restart), Honeygain refuse le device avec `Device with this name is already active` tant que l'ancienne session n'a pas expiré (quelques minutes). C'est temporaire et auto-résorbable — les devices repassent actifs d'eux-mêmes. Les noms `Docker-ISP-{1..4}-Honeygain` sont distincts et corrects.
-* **Validation IP par les plateformes** : Pawns et Honeygain peuvent **rejeter temporairement une nouvelle IP** (`tcpip-forward denied` / `Network Unusable`) alors que la passerelle est saine et que les autres providers (Repocket, PacketStream, Antgain) y sont actifs. C'est un délai de validation plateforme (souvent quelques heures), pas un bug de la stack.
+* **Validation IP par les plateformes** : Pawns et Honeygain peuvent **rejeter temporairement une nouvelle IP** (`tcpip-forward denied` / `Network Unusable`) alors que la passerelle est saine et que les autres providers (Repocket, PacketStream, Wipter) y sont actifs. C'est un délai de validation plateforme (souvent quelques heures), pas un bug de la stack.
 * **Port 8088 local** : si le dashboard affiche une **ancienne version** en navigation privée, c'est qu'un **ancien conteneur Docker local** (ou un ancien tunnel) occupe le port 8088 et sert une vieille image — pas la VM. Vérifiez `docker ps` / `ss -tlnp | grep 8088` et arrêtez la stack locale (`docker compose -p proxy_docker down`) pour libérer le port vers le tunnel SSH.
 * **Frontend périmé après redéploiement** : les assets sont désormais **hashés par contenu** (`app.<hash>.js` servis avec `max-age=1y, immutable`) — un redéploiement change le hash et le navigateur recharge automatiquement la nouvelle version. Si une page semble encore figée après un push, faites un **hard reload** (`Ctrl+Shift+R`) une fois ; l'`index.html` lui reste en revalidation (ETag).
 
@@ -223,7 +223,7 @@ DASHBOARD_SECRET="votre_secret_hmac_session"
 # Passerelles actives : "1" | "1,2" | "1,2,3" | "1,2,3,4"
 ENABLED_GATEWAYS="1"
 
-# Fournisseurs actifs : none | antgain | honeygain | packetstream | pawns | repocket | all
+# Fournisseurs actifs : none | wipter | honeygain | packetstream | pawns | repocket | all
 # "none" = aucun provider (seules les passerelles et le dashboard tournent)
 COMPOSE_PROFILES="all"
 
@@ -251,7 +251,7 @@ GATEWAY_LOGLEVEL="warn"
 Ou directement (les profils sont construits d'après `ENABLED_GATEWAYS` et `COMPOSE_PROFILES`) :
 ```bash
 # 1 passerelle + tous les fournisseurs :
-docker compose --profile gw1 --profile gw1-pawns --profile gw1-honeygain --profile gw1-repocket --profile gw1-packetstream --profile gw1-antgain up -d --build
+docker compose --profile gw1 --profile gw1-pawns --profile gw1-honeygain --profile gw1-repocket --profile gw1-packetstream --profile gw1-wipter up -d --build
 # 4 passerelles + tous les fournisseurs :
 docker compose --profile gw1 --profile gw2 --profile gw3 --profile gw4 --profile all up -d --build
 ```
@@ -306,7 +306,7 @@ Dans votre dépôt GitHub (***Settings ➔ Secrets and variables ➔ Actions***)
 
 ## 7. Documentation Technique Approfondie
 
-* 📄 [Guide Client Docker Antgain](docs/Antgain/Antgain_Client_Docker_Setup_Guide.md) : Installation, variables `ANTGAIN_API_KEY`, UUIDs stables par nœud et routage QUIC/UDP port 8443.
+* 📄 [Guide Client Docker Wipter](docs/Wipter/Wipter_Client_Docker_Setup_Guide.md) : Installation, identifiants `WIPTER_EMAIL`/`WIPTER_PASSWORD`, environnement headless Xvfb et tunnel rathole.
 * 📄 [Évaluation Déploiement Stack Docker sur Azure](docs/Recherches/Évaluation_Stack_Docker_sur_Azure.md) : Analyse Hyper-V, TUN/TAP, dimensionnement VM série B, quotas de bande passante et sécurité.
 * 📄 [Guide d'Intégration Passerelle ISP / Static Residential](docs/Integration_Passerelle_ISP_Residential.md) : Comparatif des fournisseurs de proxys et guide d'optimisation.
 * 📄 [Multi-Passerelles : 4 Pools d'IP](docs/Multi_Gateways_4_Proxies.md) : Dimensionnement, déploiement multi-proxys, profils compose et migration.

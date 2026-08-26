@@ -93,6 +93,7 @@ services:
       - NET_BIND_SERVICE # requis pour dnsproxy (port 53) et le binding des ports
     devices:
       - /dev/net/tun:/dev/net/tun
+    hostname: ${GW1_HOSTNAME:-DESKTOP-D8F2A14}
     environment:
       - ISP_PROXY_PROTOCOL=${GW1_ISP_PROXY_PROTOCOL:-${ISP_PROXY_PROTOCOL:-socks5}}
       - ISP_PROXY_HOST=${GW1_ISP_PROXY_HOST:-${ISP_PROXY_HOST:-}}
@@ -107,15 +108,14 @@ services:
     healthcheck: *gateway-healthcheck
 
   # --- Providers rattachés à la passerelle 1 (profil gw1 + type) ---
-  # Antgain : client officiel (image pinors/antgain-cli:latest).
-  # Une clé API globale partagée (ANTGAIN_API_KEY, dashboard https://antgain.app)
-  # + un UUID de device stable et unique par passerelle (GW{n}_ANTGAIN_DEVICE_ID)
-  # pour conserver l'identité du nœud lors des redémarrages.
-  antgain-1:
-    image: pinors/antgain-cli:latest
-    container_name: antgain-1
+  # Wipter : client desktop headless (image techroy23/docker-wipter:latest).
+  # Identifiants globaux (WIPTER_EMAIL / WIPTER_PASSWORD) ou spécifiques
+  # par passerelle (GW{n}_WIPTER_EMAIL / GW{n}_WIPTER_PASSWORD).
+  wipter-1:
+    image: techroy23/docker-wipter:latest
+    container_name: wipter-1
     restart: unless-stopped
-    profiles: ["gw1-antgain"]
+    profiles: ["gw1-wipter"]
     network_mode: "service:gateway-isp-1"
     depends_on:
       gateway-isp-1:
@@ -124,12 +124,15 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    shm_size: '256m'
     environment:
-      - ANTGAIN_API_KEY=${ANTGAIN_API_KEY:-}
-      - ANTGAIN_DEVICE_ID=${GW1_ANTGAIN_DEVICE_ID:-${ANTGAIN_DEVICE_ID:-}}
-    mem_limit: 96m
+      - WIPTER_EMAIL=${GW1_WIPTER_EMAIL:-${WIPTER_EMAIL:-}}
+      - WIPTER_PASSWORD=${GW1_WIPTER_PASSWORD:-${WIPTER_PASSWORD:-}}
+      - DISCORD_WEBHOOK_INTERVAL=${GW1_WIPTER_DISCORD_INTERVAL:-${WIPTER_DISCORD_INTERVAL:-}}
+      - DISCORD_WEBHOOK_URL=${GW1_WIPTER_DISCORD_WEBHOOK:-${WIPTER_DISCORD_WEBHOOK:-}}
+    mem_limit: 256m
     cpus: 0.25
-    pids_limit: 64
+    pids_limit: 160
     logging: *default-logging
 
   honeygain-1:
@@ -145,7 +148,7 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    command: ["-tou-accept", "-email", "${GW1_HONEYGAIN_EMAIL:-${HONEYGAIN_EMAIL:-}}", "-pass", "${GW1_HONEYGAIN_PASSWORD:-${HONEYGAIN_PASSWORD:-}}", "-device", "${GW1_HONEYGAIN_DEVICE_NAME:-${HONEYGAIN_DEVICE_NAME:-Docker-ISP-1-Honeygain}}"]
+    command: ["-tou-accept", "-email", "${GW1_HONEYGAIN_EMAIL:-${HONEYGAIN_EMAIL:-}}", "-pass", "${GW1_HONEYGAIN_PASSWORD:-${HONEYGAIN_PASSWORD:-}}", "-device", "${GW1_HONEYGAIN_DEVICE_NAME:-${HONEYGAIN_DEVICE_NAME:-DESKTOP-D8F2A14-HG}}"]
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64
@@ -184,7 +187,7 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    command: ["-email=${GW1_PAWNS_EMAIL:-${PAWNS_EMAIL:-}}", "-password=${GW1_PAWNS_PASSWORD:-${PAWNS_PASSWORD:-}}", "-device-name=${GW1_PAWNS_DEVICE_NAME:-${PAWNS_DEVICE_NAME:-Docker-ISP-1-Pawns}}", "-device-id=${GW1_PAWNS_DEVICE_ID:-${GW1_PAWNS_DEVICE_NAME:-Docker-ISP-1-Pawns}}", "-accept-tos"]
+    command: ["-email=${GW1_PAWNS_EMAIL:-${PAWNS_EMAIL:-}}", "-password=${GW1_PAWNS_PASSWORD:-${PAWNS_PASSWORD:-}}", "-device-name=${GW1_PAWNS_DEVICE_NAME:-${PAWNS_DEVICE_NAME:-DESKTOP-D8F2A14-PW}}", "-device-id=${GW1_PAWNS_DEVICE_ID:-${GW1_PAWNS_DEVICE_NAME:-DESKTOP-D8F2A14-PW}}", "-accept-tos"]
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64
@@ -232,6 +235,7 @@ services:
       - NET_BIND_SERVICE
     devices:
       - /dev/net/tun:/dev/net/tun
+    hostname: ${GW2_HOSTNAME:-DESKTOP-K4M9B27}
     environment:
       - ISP_PROXY_PROTOCOL=${GW2_ISP_PROXY_PROTOCOL:-socks5}
       - ISP_PROXY_HOST=${GW2_ISP_PROXY_HOST:-}
@@ -245,11 +249,11 @@ services:
     logging: *default-logging
     healthcheck: *gateway-healthcheck
 
-  antgain-2:
-    image: pinors/antgain-cli:latest
-    container_name: antgain-2
+  wipter-2:
+    image: techroy23/docker-wipter:latest
+    container_name: wipter-2
     restart: unless-stopped
-    profiles: ["gw2-antgain"]
+    profiles: ["gw2-wipter"]
     network_mode: "service:gateway-isp-2"
     depends_on:
       gateway-isp-2:
@@ -258,12 +262,15 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    shm_size: '256m'
     environment:
-      - ANTGAIN_API_KEY=${ANTGAIN_API_KEY:-}
-      - ANTGAIN_DEVICE_ID=${GW2_ANTGAIN_DEVICE_ID:-}
-    mem_limit: 96m
+      - WIPTER_EMAIL=${GW2_WIPTER_EMAIL:-${WIPTER_EMAIL:-}}
+      - WIPTER_PASSWORD=${GW2_WIPTER_PASSWORD:-${WIPTER_PASSWORD:-}}
+      - DISCORD_WEBHOOK_INTERVAL=${GW2_WIPTER_DISCORD_INTERVAL:-${WIPTER_DISCORD_INTERVAL:-}}
+      - DISCORD_WEBHOOK_URL=${GW2_WIPTER_DISCORD_WEBHOOK:-${WIPTER_DISCORD_WEBHOOK:-}}
+    mem_limit: 256m
     cpus: 0.25
-    pids_limit: 64
+    pids_limit: 160
     logging: *default-logging
 
   honeygain-2:
@@ -279,7 +286,7 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    command: ["-tou-accept", "-email", "${GW2_HONEYGAIN_EMAIL:-}", "-pass", "${GW2_HONEYGAIN_PASSWORD:-}", "-device", "${GW2_HONEYGAIN_DEVICE_NAME:-Docker-ISP-2-Honeygain}"]
+    command: ["-tou-accept", "-email", "${GW2_HONEYGAIN_EMAIL:-}", "-pass", "${GW2_HONEYGAIN_PASSWORD:-}", "-device", "${GW2_HONEYGAIN_DEVICE_NAME:-DESKTOP-K4M9B27-HG}"]
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64
@@ -318,7 +325,7 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    command: ["-email=${GW2_PAWNS_EMAIL:-}", "-password=${GW2_PAWNS_PASSWORD:-}", "-device-name=${GW2_PAWNS_DEVICE_NAME:-Docker-ISP-2-Pawns}", "-device-id=${GW2_PAWNS_DEVICE_ID:-${GW2_PAWNS_DEVICE_NAME:-Docker-ISP-2-Pawns}}", "-accept-tos"]
+    command: ["-email=${GW2_PAWNS_EMAIL:-}", "-password=${GW2_PAWNS_PASSWORD:-}", "-device-name=${GW2_PAWNS_DEVICE_NAME:-DESKTOP-K4M9B27-PW}", "-device-id=${GW2_PAWNS_DEVICE_ID:-${GW2_PAWNS_DEVICE_NAME:-DESKTOP-K4M9B27-PW}}", "-accept-tos"]
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64
@@ -366,6 +373,7 @@ services:
       - NET_BIND_SERVICE
     devices:
       - /dev/net/tun:/dev/net/tun
+    hostname: ${GW3_HOSTNAME:-DESKTOP-R7T1C52}
     environment:
       - ISP_PROXY_PROTOCOL=${GW3_ISP_PROXY_PROTOCOL:-socks5}
       - ISP_PROXY_HOST=${GW3_ISP_PROXY_HOST:-}
@@ -379,11 +387,11 @@ services:
     logging: *default-logging
     healthcheck: *gateway-healthcheck
 
-  antgain-3:
-    image: pinors/antgain-cli:latest
-    container_name: antgain-3
+  wipter-3:
+    image: techroy23/docker-wipter:latest
+    container_name: wipter-3
     restart: unless-stopped
-    profiles: ["gw3-antgain"]
+    profiles: ["gw3-wipter"]
     network_mode: "service:gateway-isp-3"
     depends_on:
       gateway-isp-3:
@@ -392,12 +400,15 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    shm_size: '256m'
     environment:
-      - ANTGAIN_API_KEY=${ANTGAIN_API_KEY:-}
-      - ANTGAIN_DEVICE_ID=${GW3_ANTGAIN_DEVICE_ID:-}
-    mem_limit: 96m
+      - WIPTER_EMAIL=${GW3_WIPTER_EMAIL:-${WIPTER_EMAIL:-}}
+      - WIPTER_PASSWORD=${GW3_WIPTER_PASSWORD:-${WIPTER_PASSWORD:-}}
+      - DISCORD_WEBHOOK_INTERVAL=${GW3_WIPTER_DISCORD_INTERVAL:-${WIPTER_DISCORD_INTERVAL:-}}
+      - DISCORD_WEBHOOK_URL=${GW3_WIPTER_DISCORD_WEBHOOK:-${WIPTER_DISCORD_WEBHOOK:-}}
+    mem_limit: 256m
     cpus: 0.25
-    pids_limit: 64
+    pids_limit: 160
     logging: *default-logging
 
   honeygain-3:
@@ -413,7 +424,7 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    command: ["-tou-accept", "-email", "${GW3_HONEYGAIN_EMAIL:-}", "-pass", "${GW3_HONEYGAIN_PASSWORD:-}", "-device", "${GW3_HONEYGAIN_DEVICE_NAME:-Docker-ISP-3-Honeygain}"]
+    command: ["-tou-accept", "-email", "${GW3_HONEYGAIN_EMAIL:-}", "-pass", "${GW3_HONEYGAIN_PASSWORD:-}", "-device", "${GW3_HONEYGAIN_DEVICE_NAME:-DESKTOP-R7T1C52-HG}"]
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64
@@ -452,7 +463,7 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    command: ["-email=${GW3_PAWNS_EMAIL:-}", "-password=${GW3_PAWNS_PASSWORD:-}", "-device-name=${GW3_PAWNS_DEVICE_NAME:-Docker-ISP-3-Pawns}", "-device-id=${GW3_PAWNS_DEVICE_ID:-${GW3_PAWNS_DEVICE_NAME:-Docker-ISP-3-Pawns}}", "-accept-tos"]
+    command: ["-email=${GW3_PAWNS_EMAIL:-}", "-password=${GW3_PAWNS_PASSWORD:-}", "-device-name=${GW3_PAWNS_DEVICE_NAME:-DESKTOP-R7T1C52-PW}", "-device-id=${GW3_PAWNS_DEVICE_ID:-${GW3_PAWNS_DEVICE_NAME:-DESKTOP-R7T1C52-PW}}", "-accept-tos"]
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64
@@ -500,6 +511,7 @@ services:
       - NET_BIND_SERVICE
     devices:
       - /dev/net/tun:/dev/net/tun
+    hostname: ${GW4_HOSTNAME:-DESKTOP-W9X3E86}
     environment:
       - ISP_PROXY_PROTOCOL=${GW4_ISP_PROXY_PROTOCOL:-socks5}
       - ISP_PROXY_HOST=${GW4_ISP_PROXY_HOST:-}
@@ -513,11 +525,11 @@ services:
     logging: *default-logging
     healthcheck: *gateway-healthcheck
 
-  antgain-4:
-    image: pinors/antgain-cli:latest
-    container_name: antgain-4
+  wipter-4:
+    image: techroy23/docker-wipter:latest
+    container_name: wipter-4
     restart: unless-stopped
-    profiles: ["gw4-antgain"]
+    profiles: ["gw4-wipter"]
     network_mode: "service:gateway-isp-4"
     depends_on:
       gateway-isp-4:
@@ -526,12 +538,15 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    shm_size: '256m'
     environment:
-      - ANTGAIN_API_KEY=${ANTGAIN_API_KEY:-}
-      - ANTGAIN_DEVICE_ID=${GW4_ANTGAIN_DEVICE_ID:-}
-    mem_limit: 96m
+      - WIPTER_EMAIL=${GW4_WIPTER_EMAIL:-${WIPTER_EMAIL:-}}
+      - WIPTER_PASSWORD=${GW4_WIPTER_PASSWORD:-${WIPTER_PASSWORD:-}}
+      - DISCORD_WEBHOOK_INTERVAL=${GW4_WIPTER_DISCORD_INTERVAL:-${WIPTER_DISCORD_INTERVAL:-}}
+      - DISCORD_WEBHOOK_URL=${GW4_WIPTER_DISCORD_WEBHOOK:-${WIPTER_DISCORD_WEBHOOK:-}}
+    mem_limit: 256m
     cpus: 0.25
-    pids_limit: 64
+    pids_limit: 160
     logging: *default-logging
 
   honeygain-4:
@@ -547,7 +562,7 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    command: ["-tou-accept", "-email", "${GW4_HONEYGAIN_EMAIL:-}", "-pass", "${GW4_HONEYGAIN_PASSWORD:-}", "-device", "${GW4_HONEYGAIN_DEVICE_NAME:-Docker-ISP-4-Honeygain}"]
+    command: ["-tou-accept", "-email", "${GW4_HONEYGAIN_EMAIL:-}", "-pass", "${GW4_HONEYGAIN_PASSWORD:-}", "-device", "${GW4_HONEYGAIN_DEVICE_NAME:-DESKTOP-W9X3E86-HG}"]
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64
@@ -586,7 +601,7 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    command: ["-email=${GW4_PAWNS_EMAIL:-}", "-password=${GW4_PAWNS_PASSWORD:-}", "-device-name=${GW4_PAWNS_DEVICE_NAME:-Docker-ISP-4-Pawns}", "-device-id=${GW4_PAWNS_DEVICE_ID:-${GW4_PAWNS_DEVICE_NAME:-Docker-ISP-4-Pawns}}", "-accept-tos"]
+    command: ["-email=${GW4_PAWNS_EMAIL:-}", "-password=${GW4_PAWNS_PASSWORD:-}", "-device-name=${GW4_PAWNS_DEVICE_NAME:-DESKTOP-W9X3E86-PW}", "-device-id=${GW4_PAWNS_DEVICE_ID:-${GW4_PAWNS_DEVICE_NAME:-DESKTOP-W9X3E86-PW}}", "-accept-tos"]
     mem_limit: 96m
     cpus: 0.25
     pids_limit: 64

@@ -566,7 +566,7 @@ const PROVIDER_TYPES = [
   { id: 'honeygain', name: 'Honeygain', base: 'honeygain', icon: '🍯', dashboard: 'https://dashboard.honeygain.com' },
   { id: 'pawns', name: 'Pawns.app', base: 'pawns', icon: '♟️', dashboard: 'https://pawns.app' },
   { id: 'packetstream', name: 'PacketStream', base: 'packetstream', icon: '📦', dashboard: 'https://packetstream.io' },
-  { id: 'antgain', name: 'Antgain', base: 'antgain', icon: '🐜', dashboard: 'https://antgain.app' }
+  { id: 'wipter', name: 'Wipter', base: 'wipter', icon: '🌐', dashboard: 'https://wipter.com' }
 ];
 
 // -----------------------------------------------------------------------------

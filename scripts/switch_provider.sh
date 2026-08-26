@@ -15,7 +15,7 @@ TARGET="$1"
 if [ -z "$TARGET" ]; then
   echo "Sélectionnez le fournisseur de monétisation à activer :"
   echo "  0) Aucun (none) — seulement la passerelle + dashboard"
-  echo "  1) Antgain (antgain)"
+  echo "  1) Wipter (wipter)"
   echo "  2) Honeygain (honeygain)"
   echo "  3) PacketStream (packetstream)"
   echo "  4) Pawns.app / IPRoyal (pawns)"
@@ -27,20 +27,20 @@ if [ -z "$TARGET" ]; then
 
   case "$CHOICE" in
     0) TARGET="none" ;;
-    1) TARGET="antgain" ;;
+    1) TARGET="wipter" ;;
     2) TARGET="honeygain" ;;
     3) TARGET="packetstream" ;;
     4) TARGET="pawns" ;;
     5) TARGET="repocket" ;;
     6) TARGET="all" ;;
-    *) TARGET="antgain" ;;
+    *) TARGET="wipter" ;;
   esac
 fi
 
 # Normalize target name
 case "$TARGET" in
   none|off|stop|aucun) TARGET="none" ;;
-  antgain|ag) TARGET="antgain" ;;
+  wipter|wp) TARGET="wipter" ;;
   honeygain|hg) TARGET="honeygain" ;;
   packetstream|ps|packet) TARGET="packetstream" ;;
   pawns|pawns-app|iproyal) TARGET="pawns" ;;
@@ -48,7 +48,7 @@ case "$TARGET" in
   all) TARGET="all" ;;
   *)
     echo "[-] Erreur : Fournisseur '$TARGET' inconnu."
-    echo "    Options valides : none | antgain | honeygain | packetstream | pawns | repocket | all"
+    echo "    Options valides : none | wipter | honeygain | packetstream | pawns | repocket | all"
     exit 1
     ;;
 esac
@@ -71,7 +71,7 @@ echo "[+] Passerelles actives : $GATEWAYS"
 # Les noms de conteneurs sont désormais suffixés par passerelle (pawns-1...)
 if [ "$TARGET" != "all" ] && [ "$TARGET" != "none" ]; then
   for G in $GATEWAYS; do
-    for TYPE in antgain honeygain packetstream pawns repocket; do
+    for TYPE in wipter honeygain packetstream pawns repocket antgain; do
       if [ "$TYPE" = "$TARGET" ]; then continue; fi
       C="${TYPE}-${G}"
       if docker ps -q -f name="^${C}$" | grep -q .; then
@@ -83,7 +83,7 @@ if [ "$TARGET" != "all" ] && [ "$TARGET" != "none" ]; then
 fi
 if [ "$TARGET" = "none" ]; then
   for G in $GATEWAYS; do
-    for TYPE in antgain honeygain packetstream pawns repocket; do
+    for TYPE in wipter honeygain packetstream pawns repocket antgain; do
       C="${TYPE}-${G}"
       if docker ps -q -f name="^${C}$" | grep -q .; then
         echo "[-] Arrêt du conteneur $C..."
