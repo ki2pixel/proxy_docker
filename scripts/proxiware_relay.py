@@ -12,6 +12,34 @@ import sys
 import select
 import threading
 import time
+import resource
+
+# Augmentation de la limite de descripteurs de fichiers pour le processus
+try:
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    target = max(65535, soft)
+    if hard > 0 and target > hard:
+        target = hard
+    resource.setrlimit(resource.RLIMIT_NOFILE, (target, hard))
+except Exception as err:
+    sys.stderr.write("Avertissement rlimit NOFILE: %s\n" % err)
+
+
+def setup_socket_keepalive(sock):
+    """Configure TCP Keepalive avec détection rapide des coupures sous Linux."""
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        # Sondes plus rapides : 60s idle, intervalle 10s, 3 échecs (mort en 90s au lieu de 2h)
+        if hasattr(socket, 'TCP_KEEPIDLE'):
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 60)
+        elif hasattr(socket, 'TCP_KEEPALIVE'):  # macOS
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPALIVE, 60)
+        if hasattr(socket, 'TCP_KEEPINTVL'):
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 10)
+        if hasattr(socket, 'TCP_KEEPCNT'):
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
+    except OSError:
+        pass
 
 def socks5_auth_parent(parent_sock, user, passwd):
     """Authentifie la connexion SOCKS5 auprès du proxy parent."""
@@ -87,13 +115,17 @@ def handle_udp_associate(client_sock, parent_host, parent_port, parent_user, par
 
         client_sock.settimeout(None)
         parent_tcp.settimeout(None)
+        setup_socket_keepalive(client_sock)
+        setup_socket_keepalive(parent_tcp)
 
         client_udp_addr = None
         parent_target = (parent_udp_ip, parent_udp_port)
 
         while True:
-            # On surveille la déconnexion TCP du client et les paquets UDP
-            r, _, _ = select.select([client_sock, udp_sock], [], [], None)
+            # On surveille la déconnexion TCP du client et les paquets UDP (timeout 300s)
+            r, _, _ = select.select([client_sock, udp_sock], [], [], 300)
+            if not r:
+                break
             if client_sock in r:
                 data = client_sock.recv(1024)
                 if not data:
@@ -196,16 +228,15 @@ def handle_client(client_sock, parent_host, parent_port, parent_user, parent_pas
         # Activer TCP Keepalive et désactiver les timeouts pour les flux persistants
         client_sock.settimeout(None)
         parent.settimeout(None)
-        try:
-            client_sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-            parent.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-        except OSError:
-            pass
+        setup_socket_keepalive(client_sock)
+        setup_socket_keepalive(parent)
 
-        # Bridge bidirectionnel TCP persistant
+        # Bridge bidirectionnel TCP persistant avec timeout d'inactivité de 300s
         sockets = [client_sock, parent]
         while True:
-            r, _, _ = select.select(sockets, [], [], None)
+            r, _, _ = select.select(sockets, [], [], 300)
+            if not r:
+                return
             for s in r:
                 bdata = s.recv(8192)
                 if not bdata:

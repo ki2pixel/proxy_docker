@@ -18,5 +18,5 @@ description: Comportement des providers de monétisation — Wipter, Honeygain, 
 ## Pièges connus (retour d'expérience)
 
 - **Wipter** : identifiants `WIPTER_EMAIL` et `WIPTER_PASSWORD` (globaux ou par passerelle `GW{n}_WIPTER_*`). L'image `techroy23/docker-wipter:latest` utilise un environnement headless (Xvfb/Openbox/gnome-keyring) pour démarrer l'application desktop et injecter les identifiants via `xte`. VNC est désactivé par défaut (`ENABLE_VNC=false`).
-- **Honeygain** : après un redémarrage, `Device with this name is already active` temporaire — auto-résorbable en quelques minutes.
-- **Validation IP plateformes** : Pawns/Honeygain peuvent rejeter une IP temporairement (`tcpip-forward denied` / `Network Unusable`) — délai plateforme, pas un bug de la stack.
+- **Repocket** : état « zombie » silencieux lors de coupures de socket (`Failed to create connection: undefined` / `Peer not found`). Nécessite le watchdog `scripts/repocket_watchdog.sh` (timer systemd) pour auto-guérir via `docker restart`.
+- **Validation IP plateformes** : Pawns/Honeygain peuvent rejeter une IP (`tcpip-forward denied` / `Network Unusable` / `non_residential_ip`). Sur proxys Proxiware commerciaux, Pawns quitte avec code 1 en boucle : retirer `pawns` de `COMPOSE_PROFILES` pour éviter le thrashing CPU/RAM. Honeygain `Network Unusable` peut être un délai de refroidissement après un pic de trafic ou un blocage de l'ASN.

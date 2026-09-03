@@ -126,13 +126,13 @@ SSH_PORT=2755 ./scripts/sync_env.sh --push-only 147.135.16.160 docs/Tierhive/Pro
 
 **Solution :** un relais SOCKS5 sur la VM **Azure** (qui a un accès direct aux proxys) ré-écrit chaque connexion vers le proxy Proxiware. Les gateways Tierhive ne parlent plus jamais au port 1337 directement.
 
-* **Script** : [`scripts/proxiware_relay.py`](scripts/proxiware_relay.py) — serveur SOCKS5 avec chaînage vers un proxy parent (SOCKS5→SOCKS5, support complet **TCP CONNECT** et **SOCKS5 UDP ASSOCIATE** pour QUIC, avec **`SO_KEEPALIVE`** sans timeout artificiel pour les tunnels persistants). Usage : `python3 proxiware_relay.py LISTEN_PORT PARENT_USER PARENT_PASS PARENT_HOST PARENT_PORT`
+* **Script** : [`scripts/proxiware_relay.py`](scripts/proxiware_relay.py) — serveur SOCKS5 avec chaînage vers un proxy parent (SOCKS5→SOCKS5, support complet **TCP CONNECT** et **SOCKS5 UDP ASSOCIATE** pour QUIC). Durci pour la haute concurrence : élévation automatique de `RLIMIT_NOFILE` à 65 535, sondes **TCP Keepalive agressives** sous Linux (`TCP_KEEPIDLE=60`, `TCP_KEEPINTVL=10`, `TCP_KEEPCNT=3` pour libérer les sockets mortes en 90s au lieu de 2h) et **timeout d'inactivité de 300s** dans `select` pour éliminer les connexions fantômes. Usage : `python3 proxiware_relay.py LISTEN_PORT PARENT_USER PARENT_PASS PARENT_HOST PARENT_PORT`
 * **Déploiement Azure** : 4 services systemd `proxiware-relay-{1..4}.service` (`/etc/systemd/system/`), un par proxy Proxiware :
   * `relay-1` → port `10801` → `188.221.160.44:1337`
   * `relay-2` → port `10802` → `78.105.196.114:1337`
   * `relay-3` → port `10803` → `188.220.211.175:1337`
   * `relay-4` → port `10804` → `82.41.242.219:1337`
-  * Config type : `ExecStart=/usr/bin/python3 /home/azureuser/proxiware_relay.py 10801 <USER_PROXIWARE> <PASS_PROXIWARE> 188.221.160.44 1337` (+ `Restart=always`)
+  * Config type : `ExecStart=/usr/bin/python3 /home/azureuser/proxiware_relay.py 10801 <USER_PROXIWARE> <PASS_PROXIWARE> 188.221.160.44 1337` (+ `Restart=always`, `LimitNOFILE=65535`, `TasksMax=4096`)
 * **Ports** : ouvrir `10801-10804` en **TCP et UDP** dans **UFW** (`sudo ufw allow 10801:10804/tcp && sudo ufw allow 10801:10804/udp`) *et* dans le **NSG Azure** (les deux firewalls sont nécessaires — le trafic UDP est indispensable pour QUIC/UDP, et TCP pour les flux HTTP/SSH/WebSockets de Repocket, Pawns, Honeygain, Wipter).
 * **Côté Tierhive** : dans `.env2`, chaque `GW{n}_ISP_PROXY_HOST` = `68.210.184.174`, `GW{n}_ISP_PROXY_PORT` = `1080{n}`, `GW{n}_ISP_PROXY_USER`/`PASS` = vides (le relais gère l'auth Proxiware en interne). Le gateway parle alors au relais sans authentification.
 * **Réseau du gateway** : la bypass rule (`ip rule pref 1004`) du proxy host `68.210.184.174` est posée automatiquement par l'entrypoint — le trafic vers Azure ne passe pas par le tunnel.
@@ -277,6 +277,7 @@ Tableau de bord Web : **[http://localhost:8088](http://localhost:8088)** — con
 | [`scripts/switch_isp_proxy.sh`](scripts/switch_isp_proxy.sh) | Bascule à chaud le proxy amont d'une passerelle : `./scripts/switch_isp_proxy.sh <HOST:PORT[:USER:PASS]> [socks5|http] [gateway]` (défaut gateway 1). |
 | [`scripts/switch_provider.sh`](scripts/switch_provider.sh) | Bascule le fournisseur de monétisation actif (`none` = aucun provider) sur **toutes les passerelles actives**. |
 | [`scripts/test_proxy.sh`](scripts/test_proxy.sh) | Teste la connectivité du proxy amont (via le conteneur gateway-isp-{n} par défaut, `[gateway]` en 3e argument). |
+| [`scripts/repocket_watchdog.sh`](scripts/repocket_watchdog.sh) | **Watchdog auto-guérison Repocket** (exécuté via timer systemd toutes les 5 min) : inspecte les conteneurs `repocket-1..4`, détecte l'état zombie suite à une micro-coupure (`Failed to create connection` / `Peer not found` sans trafic actif) et force un redémarrage ciblé (`docker restart`). Supporte `--dry-run`. |
 | [`scripts/benchmark.sh`](scripts/benchmark.sh) | Lance un benchmark en temps réel mesurant la RAM, le CPU et les PIDs de la stack. |
 | [`scripts/build-assets.mjs`](scripts/build-assets.mjs) | **Génère les assets versionnés** (cache-busting) : hache `app.js`/`style.css`/`fonts.css` dans `controller/public/dist/` et réécrit les références dans `index.html` (idempotent : refs hashées ou non). Lancé par `start.sh` et le CI avant chaque build. |
 
