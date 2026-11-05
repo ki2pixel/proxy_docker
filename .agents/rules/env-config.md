@@ -17,6 +17,9 @@ description: Gestion du .env et de la configuration — clés par passerelle, gl
 - `ENABLED_GATEWAYS` (ex. `"1,2,3,4"`)
 - `COMPOSE_PROFILES` (`all` | `none` | liste)
 - `GATEWAY_LOGLEVEL`
+- `WIPTER_EMAIL`, `WIPTER_PASSWORD`, `WIPTER_DISCORD_WEBHOOK`, `WIPTER_DISCORD_INTERVAL`
+- `HONEYGAIN_POT_EMAIL`, `HONEYGAIN_POT_PASSWORD`
+- `DASHBOARD_DOMAIN` (profil `tls`)
 
 ## Règles
 

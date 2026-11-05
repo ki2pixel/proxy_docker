@@ -4,10 +4,14 @@
 
 Chaque passerelle `gateway-isp-{n}` est un **namespace réseau Docker étanche** avec
 son propre `tun2socks`, son propre `dnsproxy` DoH et son propre proxy amont
-(bloc `GW{n}_*` du `.env`). Les plateformes de monétisation (Pawns, Honeygain,
-Repocket, PacketStream) limitent généralement à **1 appareil actif par IP publique** :
+(bloc `GW{n}_*` du `.env`). Les plateformes de monétisation (Wipter, Honeygain,
+PacketStream, Pawns.app, Repocket) limitent généralement à **1 appareil actif par IP publique** :
 avec 4 proxys distincts, on déclare 4 appareils par plateforme et on **multiplie les
 gains par 4**, chaque pool disposant de son propre quota de connexions (ex. 4 × 1000).
+
+> ⚠️ **Contrainte Pawns.app** : Pawns.app exige une IP strictement résidentielle et rejette
+> les proxys ISP commerciaux Proxiware (`non_residential_ip`) en crash loop (exit 1). Sur ces
+> plages, retirez `pawns` de `COMPOSE_PROFILES` pour préserver les ressources CPU/RAM.
 
 ## Consommation mesurée (VM Azure Standard B2ats_v2 — 2 vCPU, 1 Go RAM + 1 Go swap)
 
@@ -61,21 +65,45 @@ GW4_ISP_PROXY_HOST="proxy4.example.com"   # + identifiants GW4_*
 docker compose --profile gw1 --profile gw2 --profile gw3 --profile gw4 --profile all up -d --build
 ```
 
-### 3. Vérification
+### 3. Vérification & Exploitation
 
 ```bash
-./scripts/status.sh                                   # état + IP de chaque passerelle
+# État complet + IP et géolocalisation de chaque passerelle
+./scripts/status.sh
+
+# Tester la sortie d'une passerelle spécifique
 docker exec gateway-isp-1 curl -s https://ipinfo.io/json
 docker exec gateway-isp-2 curl -s https://ipinfo.io/json
-# → 4 adresses IP publiques DIFFÉRENTES
+# → Adresses IP publiques distinctes par passerelle
+
+# Tester la connectivité du proxy amont via le bridge local d'une passerelle
+./scripts/test_proxy.sh gateway-isp-1 23320 socks5
 ```
+
+### 4. Basculer à chaud le proxy d'une passerelle cible
+
+Le script `scripts/switch_isp_proxy.sh` accepte en 3e paramètre le numéro de la passerelle cible (défaut `1`) :
+
+```bash
+# Syntaxe :
+./scripts/switch_isp_proxy.sh <HOST:PORT[:USER:PASS]> [socks5|http] [gateway]
+
+# Exemples :
+./scripts/switch_isp_proxy.sh proxy1.example.com:1080 socks5 1
+./scripts/switch_isp_proxy.sh proxy2.example.com:1080:monuser:monpass socks5 2
+./scripts/switch_isp_proxy.sh proxy3.example.com:1080:user:pass:session-abc socks5 3
+```
+
+La configuration est immédiatement injectée dans `GW{n}_*` du `.env` et la passerelle ciblée est redémarrée à chaud sans perturber les autres passerelles.
 
 ## Profils Docker Compose (activation)
 
 | Profil | Services activés |
 | :--- | :--- |
 | `gw{n}` | passerelle `gateway-isp-{n}` uniquement |
-| `gw{n}-{type}` | provider `<type>-{n}` (type ∈ wipter, honeygain, packetstream, pawns, repocket) |
+| `gw{n}-{type}` | provider `<type>-{n}` (type ∈ `wipter`, `honeygain`, `packetstream`, `pawns`, `repocket`) |
+| `honeygain-pot` / `pot` | service utilitaire autonome de réclamation automatique du pot quotidien |
+| `tls` | reverse-proxy Caddy chiffré (exposition optionnelle) |
 
 - `scripts/start.sh`, `scripts/switch_provider.sh` et le pipeline CI construisent ces
   profils automatiquement depuis `ENABLED_GATEWAYS` + `COMPOSE_PROFILES`.

@@ -12,6 +12,8 @@ description: Opérations sur les passerelles — rotation de session, bascule de
 | Bascule proxy amont d'une passerelle | `./scripts/switch_isp_proxy.sh <HOST:PORT[:USER:PASS]> [socks5\|http] [gateway]` |
 | Bascule du provider actif | `./scripts/switch_provider.sh` |
 | Test connectivité proxy | `./scripts/test_proxy.sh [gateway]` |
+| Watchdog Repocket (anti-zombie) | `./scripts/repocket_watchdog.sh [--dry-run]` |
+| Synchronisation .env distant | `./scripts/sync_env.sh <IP> <KEY> [user] [APP_DIR] [ENV_SOURCE] [--push-only]` |
 | Benchmark stack | `./scripts/benchmark.sh` |
 
 ## Providers (docker-compose.yml)

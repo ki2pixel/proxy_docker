@@ -18,13 +18,20 @@ Langue du projet : **français** — code, commentaires, messages de log et docs
 ## Arborescence
 
 ```
-docker-compose.yml        # 4 passerelles × 5 providers, dashboard, caddy (profil tls)
+docker-compose.yml        # 4 passerelles × 5 providers, dashboard, caddy (profil tls), honeygain-pot (profil pot)
 gateway-isp/              # entrypoint.sh (TUN + routage + DoH + watchdog), healthcheck.sh, Dockerfile
 controller/               # Dashboard Express.js + orchestration Docker (index.js, lib.js, public/)
 scripts/                  # start.sh, lib.sh (bibliothèque partagée), outils ops
+scripts/proxiware_relay.py # Relais SOCKS5 (déployé sur Azure) : chaînage vers les proxys Proxiware — contourne le blocage port 1337 de Tierhive
 docs/                     # Documentation technique approfondie (Azure, multi-passerelles, routage)
 docs/Wipter/              # Guide du provider Wipter (image techroy23/docker-wipter)
+docs/Honeygain/           # Guides Honeygain et Lucky Pot (honeygain-pot)
 ```
+
+## Providers & Utilitaires (`docker-compose.yml`)
+
+- **Providers de monétisation** : profils compose **combinés** `gw{n}-{type}` (ex. `gw1-wipter`) + profil passerelle `gw{n}`. Types : `wipter`, `honeygain`, `packetstream`, `pawns`, `repocket` (images officielles / reconnues), ou `none`.
+- **Utilitaires autonomes** : `honeygain-pot` (profils `honeygain-pot` / `pot`, réclame le Lucky Pot Honeygain quotidien), `caddy` (profil `tls`). Variable `COMPOSE_PROFILES="all|none|liste"` (ex. `repocket,honeygain-pot`).
 
 ## Passerelles (`gateway-isp/`)
 
